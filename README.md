@@ -56,6 +56,28 @@
 
 ---
 
+## 📱 Android APK 手机独立版 (离线随身拍)
+
+除了使用电脑 Docker 网页版外，本项目已完整接入 **Android 原生应用封装**，可作为独立的手机 App 安装使用！
+
+### 手机版核心体验
+- **真正的离线单机 App**：全部操作界面、发丝级 AI 神经网络模型均直接内嵌于手机 App。**不插卡、不开 Wi-Fi、开启飞行模式**，在无网络的任何地方都能直接掏出手机拍摄并完成精细抠图换底；
+- **原生相机与相册权限**：免去网页端在局域网内配置或确认 SSL 自签证书的繁琐步骤，秒开秒拍，支持前置/后置超清相机；
+- **体积极其小巧**：安装包仅约 **30MB**（已全量包含 25MB MODNet 高清模型与 Google MediaPipe Wasm 库）。
+
+### 获取与下载 APK 安装包
+- **GitHub Actions 云端自动构建（推荐）**：
+  仓库内置了 GitHub Actions 自动化编译流水线。进入本仓库的 [Actions](https://github.com/mysecret2022/offline-idphoto/actions) 页面，点击最新运行的构建任务，即可在 **Artifacts** 区域直接下载 `offline-idphoto-v1.0.0.apk` 安装到手机；
+- **开发者本地构建**：
+  ```bash
+  cd v1.0.0
+  pnpm install && pnpm run build
+  npx cap sync android
+  cd android && ./gradlew assembleDebug
+  ```
+
+---
+
 ## 🐳 Docker Compose 部署指南 (推荐)
 
 ### 1. 标准 `docker-compose.yml` 完整配置

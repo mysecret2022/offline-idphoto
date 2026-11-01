@@ -10,12 +10,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@capacitor/core": "^5.7.8",
     "@mediapipe/selfie_segmentation": "0.1.1675465747",
     "lucide-vue-next": "^0.344.0",
     "onnxruntime-web": "^1.17.3",
     "vue": "^3.4.21"
   },
   "devDependencies": {
+    "@capacitor/android": "^5.7.8",
+    "@capacitor/cli": "^5.7.8",
     "@types/node": "^20.11.24",
     "@vitejs/plugin-vue": "^5.0.4",
     "autoprefixer": "^10.4.18",

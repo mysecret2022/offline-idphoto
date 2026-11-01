@@ -121,7 +121,23 @@ docker compose up -d --build
 
 ---
 
-## 4. 路线图与待改进功能
+## 5. Android APK 移动端原生工程与云端自动化构建
+
+### 架构设计与本地资产打包
+- 本系统已接入 Capacitor 原生 Android 封装架构（位于 `v1.0.0/android/`）。
+- **完全离线原则**：Web 端编译产物、Google MediaPipe Wasm 库与 MODNet 神经网络模型（`models/modnet.onnx`）已直接同步打包至 `android/app/src/main/assets/public/`，安装到手机后完全无需联网即可秒级运行。
+- **原生权限与硬件加速配置**：
+  - `AndroidManifest.xml` 声明了 `CAMERA`（原生相机）、`READ_MEDIA_IMAGES`（相册存取）；
+  - 开启 `android:hardwareAccelerated="true"` 充分发挥手机端 GPU 硬件推理加速。
+
+### GitHub Actions 自动化编译打包流水线
+- 工作流文件：`.github/workflows/build-apk.yml`
+- 触发方式：推送到 `main` 分支、发布 `v*` 标签或在 GitHub 仓库 Actions 页面手动点击【Run workflow】；
+- 编译环境：Ubuntu + Node.js 18 + Java 17 + Android SDK 33，自动执行 `./gradlew assembleDebug` 并产出 `offline-idphoto-v1.0.0.apk`。
+
+---
+
+## 6. 路线图与待改进功能
 
 - [ ] **精细化手绘微调画笔**：在托盘微调时增加橡皮擦与恢复画笔，供用户在极端发型或复杂背景下手动修饰边缘。
 - [ ] **服装快速替换 (智能正装模板叠加)**：内置男女西装/衬衫矢量图层，支持人脸关键点对齐自动套入正装。
