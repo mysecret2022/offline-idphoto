@@ -259,6 +259,30 @@
             </span>
           </div>
 
+          <!-- 引擎切换器：极速 (0.1s·手机强烈推荐) / 深度 (25MB·电脑推荐) -->
+          <div class="grid grid-cols-2 gap-1.5 p-1 bg-slate-900/80 border border-slate-700/60 rounded-xl text-[11px]">
+            <button
+              type="button"
+              @click="selectedEngine = 'fast'"
+              class="py-1.5 px-2 rounded-lg font-medium transition flex items-center justify-center space-x-1"
+              :class="selectedEngine === 'fast' 
+                ? 'bg-blue-600 text-white shadow-sm' 
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'"
+            >
+              <span>⚡ 极速引擎 (0.1秒·手机推荐)</span>
+            </button>
+            <button
+              type="button"
+              @click="selectedEngine = 'deep'"
+              class="py-1.5 px-2 rounded-lg font-medium transition flex items-center justify-center space-x-1"
+              :class="selectedEngine === 'deep' 
+                ? 'bg-indigo-600 text-white shadow-sm' 
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'"
+            >
+              <span>🔬 深度发丝 (25MB·电脑推荐)</span>
+            </button>
+          </div>
+
           <button
             @click="performMatting(true, true)"
             :disabled="!hasSourceImage || isMatting"
@@ -269,7 +293,7 @@
           >
             <Loader2 v-if="isMatting" class="w-4 h-4 animate-spin text-white" />
             <Scissors v-else class="w-4 h-4 text-amber-300" />
-            <span>{{ isMatting ? 'AI 正在发丝级抠图中...' : (cutoutBlob ? '重新一键抠图 (消除背景)' : '🪄 一键智能抠图 (只提取人物·消除背景)') }}</span>
+            <span>{{ isMatting ? (selectedEngine === 'fast' ? '⚡ 正在极速抠图 (约0.1秒)...' : '🔬 深度模型正在计算中...') : (cutoutBlob ? '重新一键抠图 (消除背景)' : '🪄 一键智能抠图 (只提取人物·消除背景)') }}</span>
           </button>
           
           <p class="text-[11px] text-slate-400 leading-snug">
@@ -524,6 +548,7 @@ const customColorTextHex = ref('#D9001B');
 const showGuideLines = ref(true);
 const isDragging = ref(false);
 const isMatting = ref(false);
+const selectedEngine = ref<'fast' | 'deep'>('fast');
 const mattingProgress = ref(0);
 const mattingStage = ref('');
 
@@ -706,8 +731,14 @@ async function performMatting(force: boolean = false, switchToTransparent: boole
   }
 
   isMatting.value = true;
-  mattingProgress.value = 10;
-  mattingStage.value = 'AI 正在提取人物轮廓并消除背景...';
+  mattingProgress.value = 15;
+  mattingStage.value = selectedEngine.value === 'fast' 
+    ? '⚡ 正在极速提取人物轮廓 (约0.1秒)...' 
+    : '🔬 正在进行深度发丝级神经网络抠图...';
+
+  // 关键：等待 DOM 渲染一帧，让手机屏幕立刻呈现半透明加载动效与文字，绝不假死
+  await nextTick();
+  await new Promise((resolve) => setTimeout(resolve, 80));
 
   try {
     const canvas = document.createElement('canvas');
@@ -717,10 +748,14 @@ async function performMatting(force: boolean = false, switchToTransparent: boole
     if (!ctx) throw new Error('无法创建离屏图层');
     ctx.drawImage(sourceImage.value, 0, 0);
 
-    const blob = await hdMattingEngine.segmentHighDefinition(canvas, (stage, progress) => {
-      mattingStage.value = stage;
-      mattingProgress.value = progress;
-    });
+    const blob = await hdMattingEngine.segmentHighDefinition(
+      canvas,
+      (stage, progress) => {
+        mattingStage.value = stage;
+        mattingProgress.value = progress;
+      },
+      selectedEngine.value
+    );
 
     // 预载入抠图结果为 Image，确保在 Canvas 绘制时不闪烁、零延迟
     const imgUrl = URL.createObjectURL(blob);

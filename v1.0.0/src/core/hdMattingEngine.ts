@@ -5,6 +5,18 @@ export interface MattingProgressCallback {
   (stage: string, progress: number): void;
 }
 
+export type MattingEngineType = 'auto' | 'fast' | 'deep';
+
+function isMobileDevice(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+    (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+}
+
+function hasWebGPU(): boolean {
+  return typeof navigator !== 'undefined' && 'gpu' in navigator;
+}
+
 export class HdMattingEngine {
   private session: ort.InferenceSession | null = null;
   private fallbackSegmenter: SelfieSegmentation | null = null;
@@ -80,40 +92,46 @@ export class HdMattingEngine {
 
   /**
    * 对单张高清输入图像执行高精抠图，返回纯透明通道人像 PNG Blob
+   * @param enginePreference 引擎偏好: 'auto' (智能适配手机/电脑), 'fast' (极速轻量50ms), 'deep' (深度发丝25MB)
    */
   public async segmentHighDefinition(
     sourceImage: HTMLCanvasElement | HTMLImageElement | ImageBitmap,
-    onProgress?: MattingProgressCallback
+    onProgress?: MattingProgressCallback,
+    enginePreference: MattingEngineType = 'auto'
   ): Promise<Blob> {
     onProgress?.('准备图像数据', 10);
 
     const width = sourceImage.width;
     const height = sourceImage.height;
 
-    // 优先尝试加载并运行端侧发丝级 MODNet 模型 (基于 WebGPU/Wasm)
-    if (!this.session && !this.isModelLoading) {
-      onProgress?.('加载 MODNet 发丝级 AI 模型...', 15);
-      await this.initOnnxModel('/models/modnet.onnx');
-    }
+    // 智能决策：如果是移动端 (iPhone/Android) 或缺乏 WebGPU 硬件支持，默认使用超轻量极速引擎 (MediaPipe 0.2MB，50毫秒出图，绝对不卡顿)
+    const shouldUseDeepModel = enginePreference === 'deep' || 
+      (enginePreference === 'auto' && !isMobileDevice() && hasWebGPU());
 
-    // 若已成功装载 ONNX 抠图模型 (MODNet)，执行全尺寸张量推理
-    if (this.session) {
-      try {
-        onProgress?.('AI 神经网络深度推演中 (MODNet 发丝级)', 30);
-        const alphaMaskCanvas = await this.runOnnxMatting(sourceImage, onProgress);
-        
-        onProgress?.('精修发丝与边缘羽化', 80);
-        const cutoutCanvas = this.compositeCutout(sourceImage, alphaMaskCanvas, width, height);
+    if (shouldUseDeepModel) {
+      if (!this.session && !this.isModelLoading) {
+        onProgress?.('加载 MODNet 深度模型 (25MB)...', 15);
+        await this.initOnnxModel('/models/modnet.onnx');
+      }
 
-        onProgress?.('完成生成透明图层', 100);
-        return await this.canvasToBlob(cutoutCanvas);
-      } catch (e) {
-        console.error('[HdMattingEngine] ONNX 推理失败，触发降级模式:', e);
+      if (this.session) {
+        try {
+          onProgress?.('深度神经网络推演中 (MODNet 发丝级)', 40);
+          const alphaMaskCanvas = await this.runOnnxMatting(sourceImage, onProgress);
+          
+          onProgress?.('精修发丝与边缘羽化', 80);
+          const cutoutCanvas = this.compositeCutout(sourceImage, alphaMaskCanvas, width, height);
+
+          onProgress?.('完成生成透明图层', 100);
+          return await this.canvasToBlob(cutoutCanvas);
+        } catch (e) {
+          console.warn('[HdMattingEngine] 深度模型推理异常，平滑切换至极速引擎:', e);
+        }
       }
     }
 
-    // 备用降级路径：利用 MediaPipe 景观高精模型进行高精推理
-    onProgress?.('启用本地 AI 发丝级抠图引擎', 40);
+    // 手机端与极速模式专用：Google MediaPipe 人像引擎 (仅 0.2MB，50毫秒出图，iPhone 丝滑流畅)
+    onProgress?.('端侧极速引擎抠图中 (约0.1秒)...', 40);
     const seg = await this.getFallbackSegmenter();
     
     // 降采样至最大 1024 边长给分割模型，以兼顾发丝级精度与毫秒级速度
