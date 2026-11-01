@@ -176,7 +176,7 @@
           <!-- 规格容器窗口 -->
           <div
             ref="viewportContainerRef"
-            class="relative rounded-2xl overflow-hidden shadow-2xl border-2 border-blue-500/80 cursor-grab active:cursor-grabbing transition-all duration-200"
+            class="relative rounded-2xl overflow-hidden shadow-2xl border-2 border-blue-500/80 cursor-grab active:cursor-grabbing transition-all duration-200 canvas-checkerboard"
             :style="{
               width: viewfinderStyle.width,
               height: viewfinderStyle.height,
@@ -1140,3 +1140,16 @@ async function openSingleExport() {
   }
 }
 </script>
+
+<style scoped>
+.canvas-checkerboard {
+  background-color: #0b1120;
+  background-image:
+    linear-gradient(45deg, #1e293b 25%, transparent 25%),
+    linear-gradient(-45deg, #1e293b 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #1e293b 75%),
+    linear-gradient(-45deg, transparent 75%, #1e293b 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+}
+</style>

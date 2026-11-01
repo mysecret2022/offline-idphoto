@@ -173,7 +173,7 @@ export const PRESET_BG_COLORS: BgColorOption[] = [
   },
   {
     id: 'bg_transparent',
-    name: '透明底 (PNG)',
+    name: '消除背景 (透明)',
     value: 'transparent',
     previewClass: 'bg-transparent border-2 border-dashed border-gray-400'
   },

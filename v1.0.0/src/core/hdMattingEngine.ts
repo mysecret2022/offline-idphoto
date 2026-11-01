@@ -309,16 +309,16 @@ export class HdMattingEngine {
       const maskVal = (mask[idx] + mask[idx + 1] + mask[idx + 2]) / 3;
 
       // 证件照平滑阶跃曲线 (Smoothstep):
-      // 小于 45 强制判定为背景底色 (彻底清除底纹杂色，alpha = 0)
-      // 大于 200 判定为前景人像 (保持 100% 原色不透明)
-      // 45~200 之间发丝细节进行高质量非线性平滑过渡羽化
+      // 小于 80 强制认定为背景底色 (彻底消除背景杂色与底纹，直接将 Alpha 降为 0)
+      // 大于 170 判定为核心人像 (保持 100% 原色不透明)
+      // 80~170 之间发丝边缘进行非线性平滑羽化过渡
       let factor = 0;
-      if (maskVal <= 45) {
+      if (maskVal <= 80) {
         factor = 0;
-      } else if (maskVal >= 200) {
+      } else if (maskVal >= 170) {
         factor = 1.0;
       } else {
-        const t = (maskVal - 45) / (200 - 45);
+        const t = (maskVal - 80) / (170 - 80);
         factor = t * t * (3 - 2 * t);
       }
 
