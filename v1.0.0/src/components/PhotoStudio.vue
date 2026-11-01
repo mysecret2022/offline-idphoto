@@ -277,7 +277,7 @@
           </div>
 
           <!-- 底色选择按钮网格 -->
-          <div class="grid grid-cols-4 gap-1.5">
+          <div class="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
             <button
               v-for="bg in bgColors"
               :key="bg.id"
@@ -285,11 +285,50 @@
               class="flex flex-col items-center justify-center p-1.5 rounded-xl border transition-all text-[11px]"
               :class="selectedBg.id === bg.id ? 'border-blue-500 bg-blue-950/50 text-blue-300 font-semibold shadow' : 'border-slate-800 hover:border-slate-700 bg-slate-800/60 text-slate-400'"
             >
-              <span class="w-6 h-6 rounded-full mb-1 flex items-center justify-center shadow-sm" :class="bg.previewClass">
+              <span class="w-6 h-6 rounded-full mb-1 flex items-center justify-center shadow-sm" :class="bg.previewClass" :style="!bg.previewClass ? { backgroundColor: bg.value } : {}">
                 <Check v-if="selectedBg.id === bg.id" class="w-3.5 h-3.5" :class="bg.id === 'bg_white' ? 'text-slate-900' : 'text-white'" />
               </span>
               <span class="truncate w-full text-center text-[10px]">{{ bg.name }}</span>
             </button>
+          </div>
+
+          <!-- 自定义任意颜色选择器 (类似 PS 拾色器与吸管，支持红/蓝等任意颜色) -->
+          <div class="pt-2 border-t border-slate-700/60 space-y-1.5">
+            <div class="flex items-center justify-between text-xs">
+              <div class="flex items-center space-x-1.5 text-slate-300">
+                <Palette class="w-3.5 h-3.5 text-amber-400" />
+                <span class="font-medium">任意自定义背景色:</span>
+              </div>
+              <span class="text-[10px] text-slate-400 font-mono">{{ customColorPickerHex.toUpperCase() }}</span>
+            </div>
+            <div class="flex items-center space-x-2">
+              <label class="relative flex items-center justify-center cursor-pointer group" title="点击调出系统调色盘/吸管">
+                <input
+                  type="color"
+                  v-model="customColorPickerHex"
+                  @input="handleCustomColorInput"
+                  class="sr-only"
+                />
+                <span
+                  class="w-8 h-8 rounded-lg shadow-inner border-2 border-slate-600 group-hover:border-blue-400 transition flex items-center justify-center text-xs"
+                  :style="{ backgroundColor: customColorPickerHex }"
+                >
+                  <Palette class="w-4 h-4 text-white drop-shadow opacity-80" />
+                </span>
+              </label>
+              <input
+                v-model="customColorTextHex"
+                @keyup.enter="handleCustomColorTextChange"
+                placeholder="#D9001B"
+                class="flex-1 px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs font-mono text-slate-100 uppercase focus:outline-none focus:border-blue-500"
+              />
+              <button
+                @click="applyCustomColorNow"
+                class="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium shadow transition"
+              >
+                应用底色
+              </button>
+            </div>
           </div>
         </div>
 
@@ -439,10 +478,10 @@
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import {
   Upload, Camera, UploadCloud, RefreshCw, Layers, Printer, Download,
-  PlusCircle, Check, RotateCcw, RotateCw, Loader2, Sparkles, ZoomIn, ZoomOut, Scissors
+  PlusCircle, Check, RotateCcw, RotateCw, Loader2, Sparkles, ZoomIn, ZoomOut, Scissors, Palette
 } from 'lucide-vue-next';
 import { PhotoSpec, BgColorOption, TrayItem } from '../types';
-import { PRESET_PHOTO_SPECS, PRESET_BG_COLORS, createCustomSpec, mmToPx } from '../core/specs';
+import { PRESET_PHOTO_SPECS, PRESET_BG_COLORS, createCustomSpec, createCustomBgColor, mmToPx } from '../core/specs';
 import { RealtimeSegmenter } from '../core/realtimeSegmenter';
 import { hdMattingEngine } from '../core/hdMattingEngine';
 import { computeGoldenRatioAlignment } from '../core/faceAlignment';
@@ -465,7 +504,9 @@ const presetSpecs = ref<PhotoSpec[]>(PRESET_PHOTO_SPECS);
 const selectedSpecId = ref<string>(PRESET_PHOTO_SPECS[0].id);
 const currentSpec = ref<PhotoSpec>(PRESET_PHOTO_SPECS[0]);
 const bgColors = ref<BgColorOption[]>(PRESET_BG_COLORS);
-const selectedBg = ref<BgColorOption>(PRESET_BG_COLORS[2]); // 默认标准蓝
+const selectedBg = ref<BgColorOption>(PRESET_BG_COLORS[1]); // 默认标准蓝
+const customColorPickerHex = ref('#D9001B');
+const customColorTextHex = ref('#D9001B');
 
 const showGuideLines = ref(true);
 const isDragging = ref(false);
@@ -698,6 +739,32 @@ async function applyBgColor(bg: BgColorOption) {
   } else {
     redrawEditor();
   }
+}
+
+// 自由自定义背景色处理
+function handleCustomColorInput() {
+  customColorTextHex.value = customColorPickerHex.value.toUpperCase();
+  applyCustomColor(customColorPickerHex.value);
+}
+
+function handleCustomColorTextChange() {
+  let hex = customColorTextHex.value.trim();
+  if (!hex.startsWith('#')) hex = '#' + hex;
+  if (/^#[0-9A-Fa-f]{6}$/.test(hex)) {
+    customColorPickerHex.value = hex;
+    applyCustomColor(hex);
+  } else {
+    emit('show-toast', '请输入有效的十六进制颜色码，如 #D9001B');
+  }
+}
+
+function applyCustomColorNow() {
+  handleCustomColorTextChange();
+}
+
+async function applyCustomColor(hex: string) {
+  const customBg = createCustomBgColor(hex);
+  await applyBgColor(customBg);
 }
 
 // AI 智能人像国标对齐 (依据头顶留白 8.5% 与人脸黄金比例)

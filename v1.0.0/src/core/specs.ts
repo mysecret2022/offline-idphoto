@@ -123,14 +123,8 @@ export function createCustomSpec(
   };
 }
 
-// 预设标准底色
+// 预设标准底色 (支持中国红、标准蓝、纯白、浅天蓝、深藏青、渐变蓝、渐变灰与透明)
 export const PRESET_BG_COLORS: BgColorOption[] = [
-  {
-    id: 'bg_original',
-    name: '原图背景',
-    value: 'original',
-    previewClass: 'bg-slate-700 border border-slate-600'
-  },
   {
     id: 'bg_white',
     name: '纯白底',
@@ -150,12 +144,16 @@ export const PRESET_BG_COLORS: BgColorOption[] = [
     previewClass: 'bg-[#D9001B]'
   },
   {
-    id: 'bg_gray_grad',
-    name: '高级灰',
-    value: 'linear-gradient(180deg, #F3F4F6 0%, #D1D5DB 100%)',
-    previewClass: 'bg-gradient-to-b from-gray-100 to-gray-300',
-    isGradient: true,
-    gradientStops: ['#F3F4F6', '#9CA3AF']
+    id: 'bg_light_blue',
+    name: '浅天蓝',
+    value: '#38BDF8',
+    previewClass: 'bg-[#38BDF8]'
+  },
+  {
+    id: 'bg_dark_blue',
+    name: '深藏青',
+    value: '#1E3A8A',
+    previewClass: 'bg-[#1E3A8A]'
   },
   {
     id: 'bg_blue_grad',
@@ -166,12 +164,35 @@ export const PRESET_BG_COLORS: BgColorOption[] = [
     gradientStops: ['#60A5FA', '#1D4ED8']
   },
   {
+    id: 'bg_gray_grad',
+    name: '高级灰',
+    value: 'linear-gradient(180deg, #F3F4F6 0%, #9CA3AF 100%)',
+    previewClass: 'bg-gradient-to-b from-gray-100 to-gray-400',
+    isGradient: true,
+    gradientStops: ['#F3F4F6', '#9CA3AF']
+  },
+  {
     id: 'bg_transparent',
     name: '透明底 (PNG)',
     value: 'transparent',
     previewClass: 'bg-transparent border-2 border-dashed border-gray-400'
+  },
+  {
+    id: 'bg_original',
+    name: '原图背景',
+    value: 'original',
+    previewClass: 'bg-slate-700 border border-slate-600'
   }
 ];
+
+export function createCustomBgColor(hex: string): BgColorOption {
+  return {
+    id: `bg_custom_${hex.replace('#', '').toLowerCase()}`,
+    name: `自定义`,
+    value: hex.startsWith('#') ? hex : `#${hex}`,
+    previewClass: ''
+  };
+}
 
 // 预设相纸/纸张
 export const PRESET_PAPERS: PaperSpec[] = [

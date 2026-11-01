@@ -67,7 +67,7 @@ export class HdMattingEngine {
         locateFile: (file) => `/mediapipe/${file}`
       });
       seg.setOptions({
-        modelSelection: 1, // 1: 完整高精景观/全身模式，细节更丰富
+        modelSelection: 0, // 0: 专注肖像近景/自拍/证件照头部与肩部，高保真人脸发丝
         selfieMode: false
       });
       seg.initialize().then(() => {
@@ -154,28 +154,9 @@ export class HdMattingEngine {
           return;
         }
 
-        onProgress?.('智能羽化与边缘保真', 75);
-        const cutoutCanvas = document.createElement('canvas');
-        cutoutCanvas.width = width;
-        cutoutCanvas.height = height;
-        const ctx = cutoutCanvas.getContext('2d');
-        if (!ctx) {
-          isResolved = true;
-          clearTimeout(timeoutId);
-          reject(new Error('Canvas 上下文创建失败'));
-          return;
-        }
-
-        // 绘制原尺寸原图
-        ctx.drawImage(sourceImage, 0, 0, width, height);
-        // 使用 mask 平滑保留人像 (通过双线性插值自动平滑适配全图尺寸)
-        ctx.globalCompositeOperation = 'destination-in';
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(results.segmentationMask, 0, 0, width, height);
-
-        // 柔和边缘羽化增强
-        this.applyEdgeRefinement(ctx, width, height);
+        onProgress?.('精确提取人像轮廓与边缘羽化', 80);
+        // 使用逐像素精准提取算法将蒙版与原图复合为透明 PNG（彻底消除背景底色与底纹）
+        const cutoutCanvas = this.applySegmentationMask(sourceImage, results.segmentationMask, width, height);
 
         onProgress?.('导出透明 PNG', 95);
         this.canvasToBlob(cutoutCanvas).then((b) => {
@@ -292,14 +273,60 @@ export class HdMattingEngine {
   }
 
   /**
-   * 边缘羽化与抗锯齿微调
+   * 将分割蒙版精确转换为透明人像图层（消除背景底纹与底色，保留发丝级羽化）
    */
-  private applyEdgeRefinement(ctx: CanvasRenderingContext2D, width: number, height: number) {
-    ctx.save();
-    ctx.filter = 'blur(0.5px)';
-    ctx.globalCompositeOperation = 'destination-in';
-    ctx.drawImage(ctx.canvas, 0, 0, width, height);
-    ctx.restore();
+  private applySegmentationMask(
+    sourceImage: HTMLCanvasElement | HTMLImageElement | ImageBitmap,
+    segmentationMask: CanvasImageSource,
+    width: number,
+    height: number
+  ): HTMLCanvasElement {
+    const srcCanvas = document.createElement('canvas');
+    srcCanvas.width = width;
+    srcCanvas.height = height;
+    const srcCtx = srcCanvas.getContext('2d', { willReadFrequently: true });
+    if (!srcCtx) throw new Error('无法创建源图 Canvas 上下文');
+    srcCtx.drawImage(sourceImage, 0, 0, width, height);
+
+    const maskCanvas = document.createElement('canvas');
+    maskCanvas.width = width;
+    maskCanvas.height = height;
+    const maskCtx = maskCanvas.getContext('2d', { willReadFrequently: true });
+    if (!maskCtx) throw new Error('无法创建蒙版 Canvas 上下文');
+    maskCtx.imageSmoothingEnabled = true;
+    maskCtx.imageSmoothingQuality = 'high';
+    maskCtx.drawImage(segmentationMask, 0, 0, width, height);
+
+    const srcImgData = srcCtx.getImageData(0, 0, width, height);
+    const maskImgData = maskCtx.getImageData(0, 0, width, height);
+    const src = srcImgData.data;
+    const mask = maskImgData.data;
+    const totalPixels = width * height;
+
+    for (let i = 0; i < totalPixels; i++) {
+      const idx = i * 4;
+      // 取蒙版灰度值 (MediaPipe 前景为高亮白，背景为黑)
+      const maskVal = (mask[idx] + mask[idx + 1] + mask[idx + 2]) / 3;
+
+      // 证件照平滑阶跃曲线 (Smoothstep):
+      // 小于 45 强制判定为背景底色 (彻底清除底纹杂色，alpha = 0)
+      // 大于 200 判定为前景人像 (保持 100% 原色不透明)
+      // 45~200 之间发丝细节进行高质量非线性平滑过渡羽化
+      let factor = 0;
+      if (maskVal <= 45) {
+        factor = 0;
+      } else if (maskVal >= 200) {
+        factor = 1.0;
+      } else {
+        const t = (maskVal - 45) / (200 - 45);
+        factor = t * t * (3 - 2 * t);
+      }
+
+      src[idx + 3] = Math.round(src[idx + 3] * factor);
+    }
+
+    srcCtx.putImageData(srcImgData, 0, 0);
+    return srcCanvas;
   }
 
   private canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {

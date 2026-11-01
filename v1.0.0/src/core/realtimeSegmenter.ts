@@ -128,24 +128,28 @@ export class RealtimeSegmenter {
     }
     ctx.fillRect(0, 0, w, h);
 
-    // 2. 离屏绘制扣出的人像 (使用 source-in 或 destination-out 蒙版复合)
+    // 2. 离屏绘制扣出的人像 (将 WebGL 蒙版转换为真正 Alpha 通道并与人物复合)
     ctx.save();
-    // 采用 mask 遮罩混合
-    // 将人物与蒙版合成：
-    // 创建临时图层
     ctx.globalCompositeOperation = 'source-over';
     
-    // 使用临时 canvas 合成人物
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = w;
     tempCanvas.height = h;
     const tCtx = tempCanvas.getContext('2d');
     if (tCtx) {
-      // 绘制原始人物
-      tCtx.drawImage(rawSource, 0, 0, w, h);
-      // 利用 destination-in 保留 mask 对应的人形区域
-      tCtx.globalCompositeOperation = 'destination-in';
+      // 绘制原始蒙版
       tCtx.drawImage(mask, 0, 0, w, h);
+      const mData = tCtx.getImageData(0, 0, w, h);
+      const d = mData.data;
+      for (let i = 0; i < d.length; i += 4) {
+        // 取灰度作为 Alpha
+        d[i + 3] = d[i];
+      }
+      tCtx.putImageData(mData, 0, 0);
+
+      // 使用 source-in 保留人形内部的人物画面
+      tCtx.globalCompositeOperation = 'source-in';
+      tCtx.drawImage(rawSource, 0, 0, w, h);
       
       // 贴回目标背景之上
       ctx.drawImage(tempCanvas, 0, 0, w, h);
