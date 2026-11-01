@@ -1,74 +1,81 @@
-# 离线端侧证件照制作与多人混排打印 Web 系统
+# 离线端侧证件照制作与多人混排打印系统 (Offline ID Photo Maker)
 
-> **项目声明**：本项目基于纯前端端侧算力与开放技术栈自研构建，维护者非任何商业官方组织。系统 100% 运行在客户端本地，承诺绝不上传任何用户照片与面部隐私数据至任何远程服务器。
-
----
-
-## 🌟 核心特性与架构设计
-
-### 1. 零后端计算与绝对隐私安全 (Zero-Backend Privacy)
-- Docker 容器与 Nginx 服务仅承担静态资源分发与 PWA 离线缓存。
-- 所有图像分割、人脸检测、换底、300 DPI 物理元数据修改与排版装箱全部由浏览器在本地硬件（WebGPU / WebAssembly / Canvas）完成。
-
-### 2. 双阶段视觉推理策略 (Dual-Stage Inference)
-- **实时取景预览**：轻量化分割模型（MediaPipe Selfie Segmentation，降采样至 256×256，15fps 节流），实现拍摄前前置底色（纯白、标准蓝、大红、高级灰）的丝滑低功耗实时预览。
-- **快门抓拍精抠**：高精单帧模型（基于 onnxruntime-web，优先调用 WebGPU 硬件加速，平滑降级 Wasm SIMD 多线程），追求发丝级精细抠图。
-
-### 3. 标准规格库与动态引导取景框
-- **预设规格库**：
-  - 标准 1 寸：295 × 413 px (25 × 35 mm)
-  - 大 1 寸：390 × 567 px (33 × 48 mm)
-  - 标准 2 寸：413 × 579 px (35 × 49 mm)
-  - 小 2 寸：413 × 531 px (35 × 45 mm)
-  - 英语四六级 (CET)：390 × 567 px (33 × 48 mm)
-  - 教师资格证 (NTCE)：413 × 626 px (35 × 53 mm)
-  - 计算机等级考试 (NCRE)：300 × 400 px
-  - 国家公务员考试 (国考)：413 × 531 px
-  - 自定义尺寸：支持按 mm 或 px 自由输入，自动以 300 DPI 精准换算。
-- **动态引导遮罩**：等比取景框缩放，叠加标准头顶留白线、人脸椭圆黄金比例圈、双肩定位参考线、居中垂直对称轴。
-
-### 4. 图像后处理与物理尺寸合规
-- **目标体积 (KB) 精准二分法压缩**：支持 20KB~100KB 等报考常用体积限制，通过 Canvas 二分法动态逼近 JPEG 质量参数（迭代 5~6 次），兼顾极限制与最高画质。
-- **300 DPI 物理打印标记注入**：纯前端二进制读写修改 JPEG JFIF APP0 标头（密度单位 1，X/Y 轴密度 300），确保冲印机与各类打印设备均能识别为无损 300 DPI 物理尺寸。
-
-### 5. 多人拍摄与混排打印引擎 (核心亮点)
-- **待印托盘 (Tray)**：支持多人串行拍照与导入，独立为每位成员配置打印张数、打印规格与底色。
-- **智能二维混排装箱**：支持标准 6 寸相纸（1795 × 1205 px @ 300 DPI）与 A4 纸（2480 × 3508 px @ 300 DPI）的自动换行与安全留白。
-- **裁切线与脚标**：四角外延式 `#CCCCCC` 浅灰色十字裁切标线（不伤照片），支持打印姓名/规格微型脚标，方便剪裁后分发归属。
-- **一键输出**：支持多页 300 DPI 原尺寸冲印文件导出及浏览器原生调用打印机。
-
-### 6. 离线 PWA 支持
-- 配置 Service Worker 与 Cache API，对静态资产与 Wasm 文件进行缓存，首访后完全支持无网离线运行。
+> ⚠️ **开源出处与合规免责声明 (Open Source Attribution & Ethics)**：
+> - 本项目深度集成并衍生开发于以下卓越的开源学术成果与前沿技术库：
+>   - **MODNet (发丝级肖像精细抠图)**：基于原作者 [@ZHKKKe](https://github.com/ZHKKKe) (柯章翰) 发表在 AAAI 2022 的学术论文及开源工程 [ZHKKKe/MODNet](https://github.com/ZHKKKe/MODNet)（遵循 Apache License 2.0 开源协议），采用社区高质量 ONNX 化模型进行端侧部署；
+>   - **MediaPipe Selfie Segmentation**：基于 Google 开源的 [Google MediaPipe](https://github.com/google-ai-edge/mediapipe) 移动端人脸与人像分割引擎（遵循 Apache License 2.0 开源协议）；
+>   - **ONNX Runtime Web**：由 Microsoft 维护的端侧硬件推理引擎 [microsoft/onnxruntime](https://github.com/microsoft/onnxruntime)（遵循 MIT License）。
+> - **维护者声明**：本项目维护者非上述项目的官方维护者。本项目系基于开源社区的研究成果，为满足“**100% 离线隐私安全、零后端计算、高保真发丝抠图与多人多规格混排相纸打印**”场景进行的工程落地、纯前端适配与功能二次开发，特此向原作者与开源社区的无私奉献致以崇高敬意！
 
 ---
 
-## 🐳 Docker Compose 部署完全指南 (推荐)
+## 🌟 核心理念：零后端计算与极致隐私保护 (Zero-Backend Privacy)
 
-项目容器内置了轻量化 Nginx Alpine，并特别配置了**跨域隔离安全响应头（COOP / COEP）**，支持现代浏览器端侧多线程极速推理。
+现代证件照拍摄常涉及面部生物信息与个人生活照隐私。本项目自设计之初即确立**零后端计算原则**：
+- **服务器仅做静态文件分发**：Docker 容器与 Nginx 服务仅承担静态网页资产与 AI 模型的缓存托管，**没有部署任何图像上传接口，亦绝不接收任何照片数据**；
+- **全流程端侧硬件闭环**：所有头发丝级抠图、背景消除、换底调色、300 DPI 标头二进制注入、文件体积压缩与相纸二维混排装箱，**100% 运行在用户本地设备（手机/电脑）的浏览器内部**；
+- **断网完全可用**：首次访问加载后，就算手机拔掉 SIM 卡或开启**飞行模式**，电脑拔掉网线，抠图换底与导出依然能以秒级顺畅执行！
+
+---
+
+## 🔬 运用的关键技术栈与实现原理 (Technology Stack)
+
+### 1. 发丝级肖像抠图引擎 (MODNet & ONNX Runtime Web)
+- **技术基础**：AAAI 2022 顶会论文《*MODNet: Trimap-Free Portrait Matting in Real Time*》（作者：Zhanghan Ke 等）。
+- **端侧硬件推理**：利用 `onnxruntime-web` 直接在浏览器内调用用户的本机硬件。
+  - **首选硬件加速**：支持 WebGPU 架构，直接调度手机与电脑的独立显卡或集成 GPU 进行并行张量矩阵计算；
+  - **自适应降级回退**：若宿主设备不支持 WebGPU，自动无缝回退至 WebAssembly SIMD 多线程执行。
+- **动态整倍分辨率算法**：针对用户任意比例的照片，自适应缩放至 32 整数倍的基准推理矩阵，进行动态张量映射，确保额头空气刘海与细微发丝根根分明，从复杂生活背景（如商超水果摊、杂乱货架）中精准分离人体。
+
+### 2. 双阶段低功耗视觉推理策略 (Dual-Stage Pipeline)
+- **第一阶段（实时取景预览）**：基于 Google MediaPipe Selfie Segmentation 轻量模型（约 250KB），以 15fps 节流降采样运行，保证移动端自拍取景流畅不发热，在拍摄前实时预览选定底色；
+- **第二阶段（快门抓拍精修）**：用户选定或抓拍照片后，触发高精度 MODNet 发丝级算法进行高清推理，输出 PS 级透明通道人物图层。
+
+### 3. 两步走向导式交互架构 (2-Step Workflow)
+- **步骤 1：一键提取人物·消除背景**：
+  - 点击后 AI 彻底消除原图杂色与背景图案，以行业标准的**黑白棋盘格**呈现纯透明单人图层，让用户直观检验发丝与轮廓；
+- **步骤 2：按需自由垫底换色**：
+  - 支持快捷一键切换中国红 (#D9001B)、标准证件蓝 (#438EDB)、纯白 (#FFFFFF)、冲印渐变蓝、高级灰，并支持原生系统调色盘（`<input type="color">` 与 Hex 任意输入）随心定制。
+
+### 4. 纯前端二进制与图像工程 (Binary & Image Processing)
+- **300 DPI 物理冲印标记注入**：
+  - 原生 HTML Canvas 导出的 JPEG 通常缺少物理尺寸标记。系统纯前端二进制解析 JPEG 数据流，在 `0xFF 0xE0` (JFIF APP0) 中精准写入 `density_unit = 1`（英寸）与 `Xdensity = Ydensity = 300`，保证照片被各类打印机与官方报考系统准确识别为 300 DPI 物理尺寸；
+- **目标体积 (KB) 二分逼近算法**：
+  - 支持报考常见的 20KB~100KB 严格大小限制，利用 Canvas 在区间 `[0.05, 0.98]` 内进行 5~6 次二分逼近搜索，画质达到极限要求的同时绝对不超标。
+
+### 5. 多人多尺寸相纸二维装箱排版算法 (Packing Algorithm)
+- **待印托盘流水线**：单人或多人连续拍照，为每张照片独立设置张数、尺寸与底色；
+- **智能排版装箱**：自动在 6 寸相纸（1795×1205 px）与 A4 相纸（2480×3508 px）上进行无碰撞排列与安全留白计算；
+- **冲印辅助标线**：照片外侧自动绘制 `#CCCCCC` 浅灰色十字裁切标线与“姓名·规格”微型识别脚标，剪裁分发极度省心。
+
+### 6. 前端现代工程架构
+- **核心框架**：Vue 3 (Composition API / `<script setup>`) + TypeScript 5；
+- **构建工具**：Vite 5 极速热重载打包；
+- **视觉组件**：Tailwind CSS 移动端优先响应式设计，Lucide Vue Next 矢量图标库；
+- **离线 PWA**：Service Worker 缓存所有代码、静态资产与 Wasm 运行时，支持无网断网离线使用。
+
+---
+
+## 🐳 Docker Compose 部署指南 (推荐)
 
 ### 1. 标准 `docker-compose.yml` 完整配置
-
-如果您需要将本服务部署在个人电脑、私有服务器或家用 NAS（如群晖 Synology、威联通 QNAP、绿联、极空间、Unraid、1Panel、Portainer 等）上，可直接使用以下编排配置：
 
 ```yaml
 version: '3.8'
 
 services:
   offline-idphoto:
-    # 构建上下文与轻量镜像定义
     build:
       context: ./v1.0.0
       dockerfile: docker/Dockerfile.quick
     container_name: offline-idphoto
     restart: always
     ports:
-      # 格式为 "宿主机访问端口 : 容器内部端口"
-      - "8080:80"    # HTTP 访问入口：适合电脑本机浏览器使用 (http://localhost:8080)
-      - "8443:443"   # HTTPS 访问入口：适合局域网移动端拍照使用 (https://<宿主机IP>:8443)
+      # 宿主机端口 : 容器端口
+      - "8080:80"    # HTTP 访问入口：电脑本机浏览器使用 (http://localhost:8080)
+      - "8443:443"   # HTTPS 访问入口：局域网手机/iPad使用 (https://<宿主机IP>:8443)
     volumes:
-      # SSL 证书持久化挂载目录：
-      # - 模式 A (零配置开箱即用)：初次启动若该目录为空，容器启动脚本会自动生成 10 年有效期的自签证书。
-      # - 模式 B (自有域名证书)：将您的 cert.pem 与 key.pem 放入此挂载目录即可实现无缝替换。
+      # SSL 证书挂载目录 (初次启动若为空，容器将自动为您生成10年有效期的自签证书)
       - ./v1.0.0/docker/certs:/etc/nginx/certs
     environment:
       - TZ=Asia/Shanghai
@@ -76,114 +83,55 @@ services:
 
 ---
 
-### 2. 命令行极速部署步骤 (3 步搞定)
+### 2. 极速启动三步走
 
-#### 第 1 步：克隆仓库并进入目录
+#### 第 1 步：克隆仓库
 ```bash
 git clone https://github.com/mysecret2022/offline-idphoto.git
 cd offline-idphoto
 ```
 
-#### 第 2 步：一键构建并启动容器
+#### 第 2 步：一键构建并启动
 ```bash
 docker compose up -d --build
 ```
-> *(注：构建采用轻量化产物镜像，约 3~5 秒即可构建完成并启动。)*
 
-#### 第 3 步：在浏览器中访问使用
-- **电脑本机访问（HTTP）**：  
-  在浏览器中打开：👉 **`http://localhost:8080`**
-- **手机 / 平板 / 局域网其他设备访问（HTTPS）**：  
-  在移动端浏览器中打开：👉 **`https://<您的宿主机局域网IP>:8443`**  
-  *(例如：`https://192.168.1.100:8443`)*
+#### 第 3 步：浏览器访问
+- **本机电脑访问（HTTP）**：👉 **`http://localhost:8080`**
+- **手机/局域网设备访问（HTTPS）**：👉 **`https://<您的电脑IP>:8443`**  
+  *(注：移动端访问必须使用 HTTPS 协议，否则手机操作系统会严加保护并禁用摄像头调取与 WebGPU 硬件加速)*
 
 ---
 
-### 3. 为什么同时提供 8080 (HTTP) 与 8443 (HTTPS) 端口？
-
-| 访问端口 | 访问协议 | 典型适用场景 | 摄像头与 WebGPU 支持说明 |
-| :--- | :--- | :--- | :--- |
-| **8080** | HTTP | 本地电脑（Windows / Mac）浏览器访问 | 浏览器默认将 `localhost` 和 `127.0.0.1` 判定为安全上下文（Secure Context），无需配置证书即可直接调用摄像头拍照并开启 GPU 加速。 |
-| **8443** | HTTPS | 手机、iPad、局域网内其他设备跨机访问 | **移动端核心要求**：苹果 iOS Safari 与安卓 Chrome 在跨设备访问非 localhost 地址时，**强制要求使用 HTTPS 协议**，否则直接禁用摄像头拍照（`getUserMedia`）与 WebGPU。容器已内置自签安全证书，手机首次打开点击“高级 ➔ 继续前往”即可授权调用相机！ |
-
----
-
-### 4. 常见管理与运维命令
-
-| 操作需求 | 执行命令 | 说明 |
-| :--- | :--- | :--- |
-| **查看运行状态** | `docker compose ps` | 查看容器是否正在正常运行（状态为 `Up`） |
-| **查看运行日志** | `docker compose logs -f` | 实时查看 Nginx 访问与证书初始化日志 |
-| **重启容器** | `docker compose restart` | 快速重启服务 |
-| **更新版本并重新构建** | `docker compose up -d --build` | 代码修改后快速构建并无缝更新运行 |
-| **停止并退出容器** | `docker compose down` | 停止并释放容器网络与端口占用 |
-
----
-
-### 5. 在 NAS / 面板（1Panel / Portainer / 群晖）中图形化部署
-
-如果您使用 Web 图形界面管理容器：
-1. **1Panel / Portainer**：
-   - 进入【容器】➔【编排 / Compose】➔【创建编排】；
-   - 填入名称 `offline-idphoto`，将上文中的 `docker-compose.yml` 贴入编辑框；
-   - 点击【创建并启动】即可。
-2. **群晖 Synology Container Manager**：
-   - 打开【Container Manager】➔【项目】➔【新增】；
-   - 设定项目名称并上传/粘贴上述 `docker-compose.yml`；
-   - 端口设置好映射（8080 与 8443），点击完成即可在群晖上常驻运行。
-
----
-
-## 🛠️ 本地前端源码调试开发 (无 Docker 环境)
-
-如果您希望对前端 Vue 源码进行二次开发或本地调试：
-
-```bash
-cd v1.0.0
-
-# 1. 安装项目依赖
-pnpm install
-
-# 2. 启动本地开发热重载服务器 (自动开启跨域隔离 COOP/COEP)
-pnpm run dev
-
-# 3. 编译生产静态包
-pnpm run build
-```
-
----
-
-## 📂 项目文件树总览
+## 📂 项目结构全景图
 
 ```text
-├── README.md                         # 项目总说明与 Docker Compose 完全指南
-├── docker-compose.yml                # 根目录快速启动编排文件
+├── README.md                         # 项目总说明、技术架构与开源合规声明
+├── docker-compose.yml                # 根目录一键启动编排
 ├── LICENSE                           # MIT 开源许可证
-└── v1.0.0/                           # 正式版本归档
+└── v1.0.0/                           # 当前正式版本归档
     ├── AGENT_PROJECT_GUIDE.md        # 面向智能体/开发者的架构自说明文档
-    ├── docker-compose.yml            # 版本内容器编排定义
+    ├── docker-compose.yml            # 版本目录容器编排
     ├── docker/
-    │   ├── Dockerfile                # 基于 node 编译与 nginx:alpine 的多阶段构建镜像
-    │   ├── Dockerfile.quick          # 极速轻量构建镜像 (基于预编译产物)
-    │   ├── nginx.conf                # 跨域隔离安全响应头、HTTP/HTTPS、Wasm MIME
-    │   ├── entrypoint.sh             # 容器启动自检与 10 年自签证书自动生成
-    │   ├── generate-ssl.sh           # 自签证书脚本 (Linux/macOS)
-    │   └── generate-ssl.bat          # 自签证书脚本 (Windows)
-    ├── dist/                         # 预编译静态分发资产 (含 WebAssembly 二进制)
+    │   ├── Dockerfile.quick          # 极速轻量容器镜像
+    │   ├── nginx.conf                # 跨域隔离安全响应头 (COOP/COEP) 与 Wasm MIME
+    │   └── entrypoint.sh             # 容器启动自检与自签证书生成
+    ├── public/
+    │   ├── models/modnet.onnx        # MODNet 发丝级高清肖像抠图模型 (25MB)
+    │   └── mediapipe/                # Google MediaPipe 实时分割模型与 Wasm 运行时
     ├── src/
     │   ├── components/
-    │   │   ├── PhotoStudio.vue       # 证件照核心工作台 (上传/拍照/拖拽/对齐/换底)
-    │   │   ├── PhotoTray.vue         # 多人照片待印托盘、张数计数器
-    │   │   ├── ExportModal.vue       # 单张精准 KB 二分压缩与 300 DPI 导出
-    │   │   └── PrintLayoutModal.vue  # 6寸/A4 自动混排拼版、十字裁切线、脚标
+    │   │   ├── PhotoStudio.vue       # 证件照核心工作台 (两步走向导、拖拽缩放旋转)
+    │   │   ├── PhotoTray.vue         # 待印照片托盘
+    │   │   ├── ExportModal.vue       # 单张精准二分压缩与 300 DPI 导出
+    │   │   └── PrintLayoutModal.vue  # 6寸/A4 自动混排拼版、十字裁切线
     │   ├── core/
-    │   │   ├── specs.ts              # 规格库定义与 mm-px 300 DPI 换算
+    │   │   ├── hdMattingEngine.ts    # MODNet (WebGPU/Wasm) 端侧高精抠图引擎
+    │   │   ├── realtimeSegmenter.ts  # MediaPipe 实时轻量分割 (15fps)
     │   │   ├── dpiWriter.ts          # 纯前端 JPEG JFIF 300 DPI 二进制注入器
-    │   │   ├── compressor.ts         # 二分法目标体积压缩算法
-    │   │   ├── realtimeSegmenter.ts  # MediaPipe 实时低功耗预览分割 (15fps)
-    │   │   ├── hdMattingEngine.ts    # ONNX Runtime (WebGPU/Wasm) 高精抠图
-    │   │   └── packingAlgorithm.ts   # 多人多规格相纸二维流式拼版算法
-    │   ├── App.vue                   # 根组件
+    │   │   ├── compressor.ts         # 二分逼近目标体积算法
+    │   │   └── specs.ts              # 证件照标准规格数据与尺寸换算
+    │   ├── App.vue
     │   └── main.ts
     ├── package.json
     └── vite.config.ts
@@ -191,25 +139,13 @@ pnpm run build
 
 ---
 
-## ❓ 常见问题排查 (FAQ)
+## 📜 开源许可与致谢 (Credits & License)
 
-### Q1: 手机打开后提示“无法使用相机”或画面黑屏？
-- **原因**：移动端浏览器（Safari / Chrome）对安全上下文有严格限制，若通过 `http://` 访问外部 IP，系统会直接禁用摄像头硬件 API。
-- **解决方法**：请务必在手机端使用 **`https://<IP>:8443`**（注意协议是 `https`，端口是 `8443`）。首次打开出现安全证书警告属于正常现象，点击“高级 ➔ 继续访问”即可正常授权摄像头拍照。
+本项目代码部分遵循 [MIT License](LICENSE) 开源协议。
 
-### Q2: 提示端口冲突（例如 8080 或 8443 已被占用）？
-- **解决方法**：修改 `docker-compose.yml` 中的端口映射，仅需修改冒号左侧的宿主机端口即可，例如改为：
-  ```yaml
-  ports:
-    - "8090:80"    # 改为本机 8090 端口访问
-    - "9443:443"   # 改为本机 9443 端口访问
-  ```
+项目中集成的核心算法与模型版权归原作者及团队所有：
+1. **MODNet**：版权归属于 [Zhanghan Ke (柯章翰)](https://github.com/ZHKKKe) 及团队，遵循 [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)；
+2. **Google MediaPipe**：版权归属于 Google LLC，遵循 [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)；
+3. **ONNX Runtime**：版权归属于 Microsoft Corporation，遵循 [MIT License](https://github.com/microsoft/onnxruntime/blob/main/LICENSE)。
 
-### Q3: 导出的照片上传到某些报名系统提示“DPI 不足”？
-- **解答**：本系统导出的所有证件照均经过纯前端二进制 JFIF 标头注入，将物理分辨率标记严格设置为 **300 DPI**。您可以在 Windows 上右键照片 ➔【属性】➔【详细信息】中直接核对水平与垂直分辨率，100% 满足各类国考、教资与签证系统的冲印质检标准。
-
----
-
-## 📄 开源许可证
-
-本项目遵循 [MIT License](LICENSE) 开源协议。
+感谢开源社区为端侧人工智能与现代 Web 发展做出的卓越贡献！
