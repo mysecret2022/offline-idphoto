@@ -25,6 +25,8 @@ export class HdMattingEngine {
   private backendUsed: 'webgpu' | 'wasm' | 'mediapipe-hd' = 'wasm';
 
   constructor() {
+    // 关键：指定 Wasm 静态二进制文件绝对路径为根路径 '/'，杜绝 404 与外网 CDN 拉取
+    ort.env.wasm.wasmPaths = '/';
     // 关键：检测跨域隔离环境。若未处于 crossOriginIsolated 环境，浏览器禁止 SharedArrayBuffer，强制设为 1 线程以杜绝 Worker 握手死锁卡死
     const isIsolated = typeof window !== 'undefined' && (window as any).crossOriginIsolated;
     ort.env.wasm.numThreads = isIsolated ? Math.min(navigator.hardwareConcurrency || 4, 4) : 1;
@@ -53,35 +55,21 @@ export class HdMattingEngine {
         this.modelBufferCache = await resp.arrayBuffer();
       }
 
-      // 2. 仅在明确支持 WebGPU 且处于 HTTPS/Localhost 安全上下文时才尝试 WebGPU，避免无谓的卡顿握手超时
-      if (hasWebGPU() && typeof window !== 'undefined' && window.isSecureContext) {
-        try {
-          console.log('[HdMattingEngine] 尝试启用 WebGPU 硬件直通加速...');
-          this.session = await ort.InferenceSession.create(this.modelBufferCache.slice(0), {
-            executionProviders: ['webgpu'],
-            graphOptimizationLevel: 'basic'
-          });
-          this.backendUsed = 'webgpu';
-          console.log('[HdMattingEngine] WebGPU 抠图会话创建成功');
-          this.isModelLoading = false;
-          return true;
-        } catch (gpuErr) {
-          console.warn('[HdMattingEngine] WebGPU 显卡未适配，0毫秒无缝切换至 Wasm CPU 引擎:', gpuErr);
-        }
-      }
-
-      // 3. Wasm 运行时：采用 basic 优化级别，跳过漫长的重度图编译，毫秒级快速就绪
-      this.session = await ort.InferenceSession.create(this.modelBufferCache.slice(0), {
+      // 2. 默认采用工业级高稳定性 Wasm 引擎 (结合 SIMD 硬件指令集)，彻底消除 WebGPU 驱动冲突与 initWasm 死锁
+      console.log('[HdMattingEngine] 正在初始化高精抠图推理会话 (Wasm SIMD)...');
+      
+      this.session = await ort.InferenceSession.create(new Uint8Array(this.modelBufferCache), {
         executionProviders: ['wasm'],
         graphOptimizationLevel: 'basic'
       });
+      
       this.backendUsed = 'wasm';
-      console.log('[HdMattingEngine] Wasm 极速抠图会话创建成功');
+      console.log('[HdMattingEngine] 抠图推理会话初始化就绪! 启用后端:', this.backendUsed);
       this.isModelLoading = false;
       return true;
-    } catch (err) {
+    } catch (err: any) {
       this.isModelLoading = false;
-      console.warn('[HdMattingEngine] ONNX 模型加载失败:', err);
+      console.error('[HdMattingEngine] ONNX 模型加载失败: ' + (err?.message || err) + ' | ' + (err?.stack || ''));
       return false;
     }
   }
@@ -135,12 +123,12 @@ export class HdMattingEngine {
       refSize = (!isMobileDevice() && hasWebGPU()) ? 512 : 384;
     }
 
-    // 确保 ONNX 模型已就绪
-    if (!this.session && !this.isModelLoading) {
+    // 确保 ONNX 模型已完全就绪 (若后台正在预取，严格等待其加载完成，杜绝竞态掉入备用引擎)
+    if (!this.session) {
       onProgress?.('正在载入离线 AI 人像模型...', 20);
       const ok = await this.initOnnxModel('/models/modnet.onnx');
-      if (!ok) {
-        throw new Error('离线人像模型加载失败，请检查网络或刷新重试');
+      if (!ok || !this.session) {
+        throw new Error('离线人像模型加载失败，请刷新页面重试');
       }
     }
 
@@ -405,3 +393,7 @@ export class HdMattingEngine {
 }
 
 export const hdMattingEngine = new HdMattingEngine();
+
+if (typeof window !== 'undefined') {
+  (window as any).__hdMattingEngine = hdMattingEngine;
+}
