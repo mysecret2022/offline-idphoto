@@ -90,10 +90,16 @@ export class HdMattingEngine {
     const width = sourceImage.width;
     const height = sourceImage.height;
 
-    // 若已成功装载 ONNX 抠图模型 (如 RMBG)，执行全尺寸张量推理
+    // 优先尝试加载并运行端侧发丝级 MODNet 模型 (基于 WebGPU/Wasm)
+    if (!this.session && !this.isModelLoading) {
+      onProgress?.('加载 MODNet 发丝级 AI 模型...', 15);
+      await this.initOnnxModel('/models/modnet.onnx');
+    }
+
+    // 若已成功装载 ONNX 抠图模型 (MODNet)，执行全尺寸张量推理
     if (this.session) {
       try {
-        onProgress?.('AI 神经网络深度推演中 (WebGPU/Wasm)', 30);
+        onProgress?.('AI 神经网络深度推演中 (MODNet 发丝级)', 30);
         const alphaMaskCanvas = await this.runOnnxMatting(sourceImage, onProgress);
         
         onProgress?.('精修发丝与边缘羽化', 80);
@@ -185,41 +191,56 @@ export class HdMattingEngine {
   }
 
   /**
-   * ONNX 模型的预处理、推理与后处理
+   * ONNX 模型的预处理、推理与后处理 (MODNet / RMBG 通用兼容)
    */
   private async runOnnxMatting(
     image: HTMLCanvasElement | HTMLImageElement | ImageBitmap,
     onProgress?: MattingProgressCallback
   ): Promise<HTMLCanvasElement> {
-    const inputSize = 1024; // RMBG 标准输入大小
+    const origW = image.width;
+    const origH = image.height;
+
+    // 计算符合 32 整数倍的推理分辨率 (兼顾发丝精度与端侧速度)
+    const refSize = 512;
+    let rw: number, rh: number;
+    if (origW >= origH) {
+      rh = Math.round(refSize * (origH / origW));
+      rh = Math.max(32, rh - (rh % 32));
+      rw = refSize;
+    } else {
+      rw = Math.round(refSize * (origW / origH));
+      rw = Math.max(32, rw - (rw % 32));
+      rh = refSize;
+    }
+
     const inputCanvas = document.createElement('canvas');
-    inputCanvas.width = inputSize;
-    inputCanvas.height = inputSize;
+    inputCanvas.width = rw;
+    inputCanvas.height = rh;
     const ctx = inputCanvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) throw new Error('无法创建推理 Canvas 上下文');
 
-    ctx.drawImage(image, 0, 0, inputSize, inputSize);
-    const imgData = ctx.getImageData(0, 0, inputSize, inputSize);
+    ctx.drawImage(image, 0, 0, rw, rh);
+    const imgData = ctx.getImageData(0, 0, rw, rh);
     const { data } = imgData;
 
-    // 转换为 NCHW Float32Tensor [1, 3, 1024, 1024], 归一化 (x / 255.0 - 0.5) / 0.5
-    const float32Data = new Float32Array(3 * inputSize * inputSize);
-    const channelSize = inputSize * inputSize;
+    // 转换为 NCHW Float32Tensor [1, 3, rh, rw], MODNet 归一化: (x / 127.5) - 1.0
+    const float32Data = new Float32Array(3 * rw * rh);
+    const channelSize = rw * rh;
 
     for (let i = 0; i < channelSize; i++) {
       const r = data[i * 4];
       const g = data[i * 4 + 1];
       const b = data[i * 4 + 2];
 
-      float32Data[i] = (r / 255.0 - 0.5) / 0.5;
-      float32Data[channelSize + i] = (g / 255.0 - 0.5) / 0.5;
-      float32Data[channelSize * 2 + i] = (b / 255.0 - 0.5) / 0.5;
+      float32Data[i] = (r / 127.5) - 1.0;
+      float32Data[channelSize + i] = (g / 127.5) - 1.0;
+      float32Data[channelSize * 2 + i] = (b / 127.5) - 1.0;
     }
 
-    const inputTensor = new ort.Tensor('float32', float32Data, [1, 3, inputSize, inputSize]);
+    const inputTensor = new ort.Tensor('float32', float32Data, [1, 3, rh, rw]);
     const inputName = this.session!.inputNames[0];
 
-    onProgress?.('模型矩阵运算中', 55);
+    onProgress?.('MODNet 发丝级 AI 深度推演中', 55);
     const results = await this.session!.run({ [inputName]: inputTensor });
     const outputName = this.session!.outputNames[0];
     const outputTensor = results[outputName];
@@ -227,15 +248,14 @@ export class HdMattingEngine {
     // 将输出张量转为单通道灰度 Alpha Canvas
     const outputData = outputTensor.data as Float32Array;
     const maskCanvas = document.createElement('canvas');
-    maskCanvas.width = inputSize;
-    maskCanvas.height = inputSize;
+    maskCanvas.width = rw;
+    maskCanvas.height = rh;
     const maskCtx = maskCanvas.getContext('2d');
     if (!maskCtx) throw new Error('无法创建 Mask Canvas');
 
-    const maskImgData = maskCtx.createImageData(inputSize, inputSize);
+    const maskImgData = maskCtx.createImageData(rw, rh);
     for (let i = 0; i < channelSize; i++) {
       let val = outputData[i];
-      // Sigmoid 或 0-1 截断映射
       if (val < 0) val = 0;
       if (val > 1) val = 1;
       const alpha = Math.round(val * 255);
