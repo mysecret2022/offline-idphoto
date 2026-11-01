@@ -259,27 +259,27 @@
             </span>
           </div>
 
-          <!-- 引擎切换器：极速 (0.1s·手机强烈推荐) / 深度 (25MB·电脑推荐) -->
+          <!-- 引擎切换器：极速 (手机推荐·秒级出图) / 深度 (高配电脑·发丝级) -->
           <div class="grid grid-cols-2 gap-1.5 p-1 bg-slate-900/80 border border-slate-700/60 rounded-xl text-[11px]">
             <button
               type="button"
-              @click="selectedEngine = 'fast'"
+              @click="switchEngine('fast')"
               class="py-1.5 px-2 rounded-lg font-medium transition flex items-center justify-center space-x-1"
               :class="selectedEngine === 'fast' 
                 ? 'bg-blue-600 text-white shadow-sm' 
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'"
             >
-              <span>⚡ 极速引擎 (0.1秒·手机推荐)</span>
+              <span>⚡ 极速引擎 (手机推荐·秒出)</span>
             </button>
             <button
               type="button"
-              @click="selectedEngine = 'deep'"
+              @click="switchEngine('deep')"
               class="py-1.5 px-2 rounded-lg font-medium transition flex items-center justify-center space-x-1"
               :class="selectedEngine === 'deep' 
                 ? 'bg-indigo-600 text-white shadow-sm' 
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'"
             >
-              <span>🔬 深度发丝 (25MB·电脑推荐)</span>
+              <span>🔬 深度发丝 (电脑高精)</span>
             </button>
           </div>
 
@@ -293,11 +293,11 @@
           >
             <Loader2 v-if="isMatting" class="w-4 h-4 animate-spin text-white" />
             <Scissors v-else class="w-4 h-4 text-amber-300" />
-            <span>{{ isMatting ? (selectedEngine === 'fast' ? '⚡ 正在极速抠图 (约0.1秒)...' : '🔬 深度模型正在计算中...') : (cutoutBlob ? '重新一键抠图 (消除背景)' : '🪄 一键智能抠图 (只提取人物·消除背景)') }}</span>
+            <span>{{ isMatting ? (selectedEngine === 'fast' ? '⚡ 正在极速抠图出人像...' : '🔬 深度模型正在精细推演中...') : (cutoutBlob ? '重新一键抠图 (消除背景)' : '🪄 一键智能抠图 (只提取人物·消除背景)') }}</span>
           </button>
           
           <p class="text-[11px] text-slate-400 leading-snug">
-            {{ cutoutBlob ? '✅ 原图背景已彻底消除！请在下方【第二步】为您抠出的人物随意换上所需的底色：' : '点击后将智能识别人物轮廓，直接把原图杂乱背景消除为纯透明底。' }}
+            {{ cutoutBlob ? '✅ 原图背景已彻底消除！请在下方【第二步】为您抠出的人物随意换上所需的底色：' : '点击后将智能识别人物轮廓与发丝，直接把原图杂乱背景消除为纯透明底。' }}
           </p>
         </div>
 
@@ -718,6 +718,15 @@ async function loadFile(file: File | Blob) {
   img.src = url;
 }
 
+// 切换抠图引擎
+function switchEngine(engine: MattingEngineType) {
+  if (selectedEngine.value === engine) return;
+  selectedEngine.value = engine;
+  cutoutBlob.value = null;
+  currentCutoutImg = null;
+  emit('show-toast', engine === 'fast' ? '已切换至 ⚡ 极速轻量引擎 (手机推荐·秒级出图)' : '已切换至 🔬 深度发丝级引擎 (电脑高精)');
+}
+
 // 执行本地端侧发丝级抠图 (参数 switchToTransparent: 是否在抠完后默认消除背景呈现纯透明人像)
 async function performMatting(force: boolean = false, switchToTransparent: boolean = true) {
   if (!sourceImage.value || isMatting.value) return;
@@ -733,8 +742,8 @@ async function performMatting(force: boolean = false, switchToTransparent: boole
   isMatting.value = true;
   mattingProgress.value = 15;
   mattingStage.value = selectedEngine.value === 'fast' 
-    ? '⚡ 正在极速提取人物轮廓 (约0.1秒)...' 
-    : '🔬 正在进行深度发丝级神经网络抠图...';
+    ? '⚡ 正在准备极速人像引擎...' 
+    : '🔬 正在准备深度发丝级模型...';
 
   // 关键：等待 DOM 渲染一帧，让手机屏幕立刻呈现半透明加载动效与文字，绝不假死
   await nextTick();
@@ -775,10 +784,10 @@ async function performMatting(force: boolean = false, switchToTransparent: boole
       if (transBg) selectedBg.value = transBg;
     }
 
-    emit('show-toast', '已成功提取人物轮廓！原背景已彻底消除，请在下方选择所需底色');
+    emit('show-toast', '✅ 已成功提取人物与发丝！原背景已彻底消除，请在下方选择所需底色');
   } catch (err: any) {
     console.error('抠图失败:', err);
-    emit('show-toast', '抠图提示: 请保持原图或重新调整');
+    emit('show-toast', `抠图提示: ${err?.message || '未能成功提取，请检查图片'}`);
   } finally {
     isMatting.value = false;
     await triggerAutoAlignment();

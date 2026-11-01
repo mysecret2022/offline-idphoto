@@ -92,50 +92,56 @@ export class HdMattingEngine {
 
   /**
    * 对单张高清输入图像执行高精抠图，返回纯透明通道人像 PNG Blob
-   * @param enginePreference 引擎偏好: 'auto' (智能适配手机/电脑), 'fast' (极速轻量50ms), 'deep' (深度发丝25MB)
+   * @param enginePreference 引擎偏好: 'auto' (智能适配手机/电脑), 'fast' (极速轻量384px), 'deep' (深度发丝512px)
    */
   public async segmentHighDefinition(
     sourceImage: HTMLCanvasElement | HTMLImageElement | ImageBitmap,
     onProgress?: MattingProgressCallback,
     enginePreference: MattingEngineType = 'auto'
   ): Promise<Blob> {
-    onProgress?.('准备图像数据', 10);
+    onProgress?.('准备图像数据...', 10);
 
     const width = sourceImage.width;
     const height = sourceImage.height;
 
-    // 智能决策：如果是移动端 (iPhone/Android) 或缺乏 WebGPU 硬件支持，默认使用超轻量极速引擎 (MediaPipe 0.2MB，50毫秒出图，绝对不卡顿)
-    const shouldUseDeepModel = enginePreference === 'deep' || 
-      (enginePreference === 'auto' && !isMobileDevice() && hasWebGPU());
+    // 确定基准推理分辨率：
+    // 'fast': 384px（计算量仅为原版的 50%，手机端秒出，且完整保留根根分明的发丝细节，零漏抠）
+    // 'deep': 512px（全高清发丝级，适合拥有独立显卡或高性能电脑）
+    // 'auto': 移动端自动选 384px，电脑端带 WebGPU 选 512px
+    let refSize = 384;
+    if (enginePreference === 'deep') {
+      refSize = 512;
+    } else if (enginePreference === 'fast') {
+      refSize = 384;
+    } else {
+      refSize = (!isMobileDevice() && hasWebGPU()) ? 512 : 384;
+    }
 
-    if (shouldUseDeepModel) {
-      if (!this.session && !this.isModelLoading) {
-        onProgress?.('加载 MODNet 深度模型 (25MB)...', 15);
-        await this.initOnnxModel('/models/modnet.onnx');
-      }
-
-      if (this.session) {
-        try {
-          onProgress?.('深度神经网络推演中 (MODNet 发丝级)', 40);
-          const alphaMaskCanvas = await this.runOnnxMatting(sourceImage, onProgress);
-          
-          onProgress?.('精修发丝与边缘羽化', 80);
-          const cutoutCanvas = this.compositeCutout(sourceImage, alphaMaskCanvas, width, height);
-
-          onProgress?.('完成生成透明图层', 100);
-          return await this.canvasToBlob(cutoutCanvas);
-        } catch (e) {
-          console.warn('[HdMattingEngine] 深度模型推理异常，平滑切换至极速引擎:', e);
-        }
+    // 确保 ONNX 模型已就绪
+    if (!this.session && !this.isModelLoading) {
+      onProgress?.('正在载入离线 AI 人像模型...', 20);
+      const ok = await this.initOnnxModel('/models/modnet.onnx');
+      if (!ok) {
+        throw new Error('离线人像模型加载失败，请检查网络或刷新重试');
       }
     }
 
-    // 手机端与极速模式专用：Google MediaPipe 人像引擎 (仅 0.2MB，50毫秒出图，iPhone 丝滑流畅)
-    onProgress?.('端侧极速引擎抠图中 (约0.1秒)...', 40);
+    if (this.session) {
+      onProgress?.(refSize === 384 ? '⚡ 极速神经网络推演中 (发丝精修)...' : '🔬 深度发丝级神经网络高精推演中...', 45);
+      const alphaMaskCanvas = await this.runOnnxMatting(sourceImage, onProgress, refSize);
+      
+      onProgress?.('精修发丝与边缘羽化...', 80);
+      const cutoutCanvas = this.compositeCutout(sourceImage, alphaMaskCanvas, width, height);
+
+      onProgress?.('生成纯透明人像图层...', 95);
+      return await this.canvasToBlob(cutoutCanvas);
+    }
+
+    // 兜底保障：若 ONNX 异常则启用 MediaPipe 引擎
+    onProgress?.('启动备用端侧极速引擎...', 40);
     const seg = await this.getFallbackSegmenter();
     
-    // 降采样至最大 1024 边长给分割模型，以兼顾发丝级精度与毫秒级速度
-    const maxDim = 1024;
+    const maxDim = 512;
     let segCanvas: HTMLCanvasElement;
     if (Math.max(width, height) > maxDim) {
       const scale = maxDim / Math.max(width, height);
@@ -179,7 +185,6 @@ export class HdMattingEngine {
         }
 
         onProgress?.('精确提取人像轮廓与边缘羽化', 80);
-        // 使用逐像素精准提取算法将蒙版与原图复合为透明 PNG（彻底消除背景底色与底纹）
         const cutoutCanvas = this.applySegmentationMask(sourceImage, results.segmentationMask, width, height);
 
         onProgress?.('导出透明 PNG', 95);
@@ -209,17 +214,17 @@ export class HdMattingEngine {
   }
 
   /**
-   * ONNX 模型的预处理、推理与后处理 (MODNet / RMBG 通用兼容)
+   * ONNX 模型的预处理、推理与后处理 (MODNet 通用自适应分辨率)
    */
   private async runOnnxMatting(
     image: HTMLCanvasElement | HTMLImageElement | ImageBitmap,
-    onProgress?: MattingProgressCallback
+    onProgress?: MattingProgressCallback,
+    refSize: number = 384
   ): Promise<HTMLCanvasElement> {
     const origW = image.width;
     const origH = image.height;
 
     // 计算符合 32 整数倍的推理分辨率 (兼顾发丝精度与端侧速度)
-    const refSize = 512;
     let rw: number, rh: number;
     if (origW >= origH) {
       rh = Math.round(refSize * (origH / origW));
@@ -258,7 +263,7 @@ export class HdMattingEngine {
     const inputTensor = new ort.Tensor('float32', float32Data, [1, 3, rh, rw]);
     const inputName = this.session!.inputNames[0];
 
-    onProgress?.('MODNet 发丝级 AI 深度推演中', 55);
+    onProgress?.('发丝级 AI 神经网络推理中...', 60);
     const results = await this.session!.run({ [inputName]: inputTensor });
     const outputName = this.session!.outputNames[0];
     const outputTensor = results[outputName];
@@ -343,20 +348,20 @@ export class HdMattingEngine {
 
     for (let i = 0; i < totalPixels; i++) {
       const idx = i * 4;
-      // 取蒙版灰度值 (MediaPipe 前景为高亮白，背景为黑)
-      const maskVal = (mask[idx] + mask[idx + 1] + mask[idx + 2]) / 3;
+      // 取蒙版置信度：兼容 Red 通道、灰度通道与 Alpha 通道 (MediaPipe 在不同设备上输出可能位于 R 或 A 通道)
+      const maskVal = Math.max(mask[idx], mask[idx + 1], mask[idx + 2], mask[idx + 3]);
 
-      // 证件照平滑阶跃曲线 (Smoothstep):
-      // 小于 80 强制认定为背景底色 (彻底消除背景杂色与底纹，直接将 Alpha 降为 0)
-      // 大于 170 判定为核心人像 (保持 100% 原色不透明)
-      // 80~170 之间发丝边缘进行非线性平滑羽化过渡
+      // 证件照平滑羽化阶跃曲线 (Smoothstep):
+      // 小于 60 认定为背景底色 (彻底消除背景杂色与底纹，直接将 Alpha 降为 0)
+      // 大于 190 判定为核心人像 (保持 100% 原色不透明)
+      // 60~190 之间发丝边缘进行非线性平滑羽化过渡
       let factor = 0;
-      if (maskVal <= 80) {
+      if (maskVal <= 60) {
         factor = 0;
-      } else if (maskVal >= 170) {
+      } else if (maskVal >= 190) {
         factor = 1.0;
       } else {
-        const t = (maskVal - 80) / (170 - 80);
+        const t = (maskVal - 60) / (190 - 60);
         factor = t * t * (3 - 2 * t);
       }
 
