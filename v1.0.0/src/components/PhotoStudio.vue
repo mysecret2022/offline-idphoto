@@ -1,5 +1,14 @@
 <template>
   <div class="relative w-full h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden select-none">
+    <!-- 全局隐藏的文件选择输入框（脱离 v-if 条件渲染，确保随时随地可调起原生换图弹窗） -->
+    <input
+      ref="fileInputRef"
+      type="file"
+      accept="image/*"
+      class="hidden"
+      @change="handleFileInputChange"
+    />
+
     <!-- 顶部状态与规格导航栏 -->
     <header class="w-full z-20 flex flex-wrap items-center justify-between px-4 py-2.5 bg-slate-900/90 border-b border-slate-800 backdrop-blur-md gap-2">
       <!-- 左侧：工作模式切换 -->
@@ -88,13 +97,6 @@
           @drop.prevent="handleFileDrop"
           @click="triggerFileInput"
         >
-          <input
-            ref="fileInputRef"
-            type="file"
-            accept="image/*"
-            class="hidden"
-            @change="handleFileInputChange"
-          />
           <div class="w-16 h-16 rounded-2xl bg-blue-600/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
             <UploadCloud class="w-8 h-8" />
           </div>
@@ -472,10 +474,12 @@
 
           <button
             v-if="hasSourceImage"
+            type="button"
             @click="triggerFileInput"
-            class="w-full py-1.5 text-center text-xs text-slate-400 hover:text-slate-200 transition"
+            class="w-full py-2 px-3 rounded-xl border border-slate-700/80 hover:border-slate-600 bg-slate-800/60 hover:bg-slate-800 text-center text-xs text-slate-300 hover:text-white transition flex items-center justify-center space-x-1.5 shadow-sm"
           >
-            换一张照片...
+            <ImageIcon class="w-3.5 h-3.5 text-slate-400" />
+            <span>换一张照片 (重新选图)</span>
           </button>
         </div>
       </aside>
@@ -515,7 +519,8 @@
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import {
   Upload, Camera, UploadCloud, RefreshCw, Layers, Printer, Download,
-  PlusCircle, Check, RotateCcw, RotateCw, Loader2, Sparkles, ZoomIn, ZoomOut, Scissors, Palette
+  PlusCircle, Check, RotateCcw, RotateCw, Loader2, Sparkles, ZoomIn, ZoomOut, Scissors, Palette,
+  Image as ImageIcon
 } from 'lucide-vue-next';
 import { PhotoSpec, BgColorOption, TrayItem } from '../types';
 import { PRESET_PHOTO_SPECS, PRESET_BG_COLORS, createCustomSpec, createCustomBgColor, mmToPx } from '../core/specs';
@@ -636,6 +641,10 @@ onUnmounted(() => {
 
 // 模式切换
 async function switchMode(mode: 'upload' | 'camera') {
+  if (currentMode.value === 'upload' && mode === 'upload' && hasSourceImage.value) {
+    triggerFileInput();
+    return;
+  }
   currentMode.value = mode;
   if (mode === 'camera') {
     await startCamera();
