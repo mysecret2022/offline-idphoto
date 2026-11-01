@@ -21,49 +21,67 @@ export class HdMattingEngine {
   private session: ort.InferenceSession | null = null;
   private fallbackSegmenter: SelfieSegmentation | null = null;
   private isModelLoading = false;
+  private modelBufferCache: ArrayBuffer | null = null;
   private backendUsed: 'webgpu' | 'wasm' | 'mediapipe-hd' = 'wasm';
 
   constructor() {
-    // 配置 wasm 路径与多线程
-    ort.env.wasm.numThreads = Math.min(navigator.hardwareConcurrency || 4, 4);
+    // 关键：检测跨域隔离环境。若未处于 crossOriginIsolated 环境，浏览器禁止 SharedArrayBuffer，强制设为 1 线程以杜绝 Worker 握手死锁卡死
+    const isIsolated = typeof window !== 'undefined' && (window as any).crossOriginIsolated;
+    ort.env.wasm.numThreads = isIsolated ? Math.min(navigator.hardwareConcurrency || 4, 4) : 1;
     ort.env.wasm.simd = true;
   }
 
   /**
-   * 初始化 ONNX 高精度抠图模型 (如 RMBG-1.4 或精简通用高精 ONNX 模型)
+   * 初始化 ONNX 高精度抠图模型
    */
-  public async initOnnxModel(modelUrlOrBuffer: string | ArrayBuffer): Promise<boolean> {
+  public async initOnnxModel(modelUrl: string): Promise<boolean> {
     if (this.session) return true;
+    if (this.isModelLoading) {
+      while (this.isModelLoading) {
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return !!this.session;
+    }
     this.isModelLoading = true;
 
     try {
-      console.log('[HdMattingEngine] 正在尝试以 WebGPU 加载高精抠图模型...');
-      // 优先尝试 WebGPU
-      try {
-        this.session = await ort.InferenceSession.create(modelUrlOrBuffer, {
-          executionProviders: ['webgpu'],
-          graphOptimizationLevel: 'all'
-        });
-        this.backendUsed = 'webgpu';
-        console.log('[HdMattingEngine] WebGPU 抠图会话创建成功');
-        this.isModelLoading = false;
-        return true;
-      } catch (gpuErr) {
-        console.warn('[HdMattingEngine] WebGPU 后端不可用，平滑回退至 Wasm 运行时:', gpuErr);
+      // 1. 一次性预取模型 ArrayBuffer 缓存到内存，杜绝多次请求与重复下载
+      if (!this.modelBufferCache) {
+        console.log('[HdMattingEngine] 正在拉取离线神经网络权重...');
+        const resp = await fetch(modelUrl);
+        if (!resp.ok) throw new Error(`模型网络请求失败 (${resp.status})`);
+        this.modelBufferCache = await resp.arrayBuffer();
       }
 
-      // Wasm 回退
-      this.session = await ort.InferenceSession.create(modelUrlOrBuffer, {
+      // 2. 仅在明确支持 WebGPU 且处于 HTTPS/Localhost 安全上下文时才尝试 WebGPU，避免无谓的卡顿握手超时
+      if (hasWebGPU() && typeof window !== 'undefined' && window.isSecureContext) {
+        try {
+          console.log('[HdMattingEngine] 尝试启用 WebGPU 硬件直通加速...');
+          this.session = await ort.InferenceSession.create(this.modelBufferCache.slice(0), {
+            executionProviders: ['webgpu'],
+            graphOptimizationLevel: 'basic'
+          });
+          this.backendUsed = 'webgpu';
+          console.log('[HdMattingEngine] WebGPU 抠图会话创建成功');
+          this.isModelLoading = false;
+          return true;
+        } catch (gpuErr) {
+          console.warn('[HdMattingEngine] WebGPU 显卡未适配，0毫秒无缝切换至 Wasm CPU 引擎:', gpuErr);
+        }
+      }
+
+      // 3. Wasm 运行时：采用 basic 优化级别，跳过漫长的重度图编译，毫秒级快速就绪
+      this.session = await ort.InferenceSession.create(this.modelBufferCache.slice(0), {
         executionProviders: ['wasm'],
-        graphOptimizationLevel: 'all'
+        graphOptimizationLevel: 'basic'
       });
       this.backendUsed = 'wasm';
-      console.log('[HdMattingEngine] Wasm 抠图会话创建成功');
+      console.log('[HdMattingEngine] Wasm 极速抠图会话创建成功');
       this.isModelLoading = false;
       return true;
     } catch (err) {
       this.isModelLoading = false;
-      console.warn('[HdMattingEngine] ONNX 模型加载失败，将启用内置高精度精细分割引擎:', err);
+      console.warn('[HdMattingEngine] ONNX 模型加载失败:', err);
       return false;
     }
   }

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>ONNX Web 性能瓶颈精密探针测试</title>
+  <style>
+    body { font-family: monospace; background: #0f172a; color: #f8fafc; padding: 20px; line-height: 1.6; }
+    .log { background: #1e293b; padding: 12px; border-radius: 8px; margin: 8px 0; border-left: 4px solid #3b82f6; white-space: pre-wrap; font-size: 13px; }
+    .err { border-color: #ef4444; color: #fca5a5; }
+    .success { border-color: #10b981; color: #6ee7b7; }
+    .time { color: #fbbf24; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h2>🔬 离线证件照 ONNX Web 性能与耗时精密分析</h2>
+  <div id="logs"></div>
+
+  <script type="module">
+    import * as ort from '/assets/index-CxmVT-ME.js';
+    
+    function log(msg, type = '') {
+      const el = document.createElement('div');
+      el.className = 'log ' + type;
+      el.innerHTML = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      document.getElementById('logs').appendChild(el);
+      console.log(msg);
+    }
+
+    async function runTest() {
+      log('开始环境检查...');
+      log(`crossOriginIsolated: ${window.crossOriginIsolated}`);
+      log(`navigator.hardwareConcurrency: ${navigator.hardwareConcurrency}`);
+      log(`'gpu' in navigator: ${'gpu' in navigator}`);
+
+      // 1. 测试模型单次内存预拉取耗时
+      const tFetch0 = performance.now();
+      log('1. 正在请求 /models/modnet.onnx...');
+      try {
+        const resp = await fetch('/models/modnet.onnx');
+        const buffer = await resp.arrayBuffer();
+        const tFetch = performance.now() - tFetch0;
+        log(`✓ 模型下载完成: 大小 ${(buffer.byteLength / 1024 / 1024).toFixed(2)} MB, <span class="time">耗时: ${tFetch.toFixed(1)} ms</span>`, 'success');
+
+        // 测试 WebGPU 创建耗时
+        log('2. 尝试以 WebGPU 创建会话...');
+        const tGpu0 = performance.now();
+        try {
+          const sessGpu = await ort.InferenceSession.create(buffer.slice(0), {
+            executionProviders: ['webgpu']
+          });
+          log(`✓ WebGPU 会话创建成功, <span class="time">耗时: ${(performance.now() - tGpu0).toFixed(1)} ms</span>`, 'success');
+        } catch (e) {
+          log(`✗ WebGPU 创建失败: ${e.message}, <span class="time">耗时: ${(performance.now() - tGpu0).toFixed(1)} ms</span>`, 'err');
+        }
+
+        // 测试 Wasm 创建耗时
+        log('3. 尝试以 Wasm 创建会话...');
+        const tWasm0 = performance.now();
+        try {
+          const sessWasm = await ort.InferenceSession.create(buffer.slice(0), {
+            executionProviders: ['wasm']
+          });
+          log(`✓ Wasm 会话创建成功, <span class="time">耗时: ${(performance.now() - tWasm0).toFixed(1)} ms</span>`, 'success');
+        } catch (e) {
+          log(`✗ Wasm 创建失败: ${e.message}, <span class="time">耗时: ${(performance.now() - tWasm0).toFixed(1)} ms</span>`, 'err');
+        }
+
+      } catch (e) {
+        log(`拉取模型失败: ${e.message}`, 'err');
+      }
+    }
+
+    runTest();
+  </script>
+</body>
+</html>

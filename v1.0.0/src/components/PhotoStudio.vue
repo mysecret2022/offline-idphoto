@@ -618,6 +618,11 @@ onMounted(() => {
   window.addEventListener('mouseup', endPan);
   window.addEventListener('touchmove', onTouchPanMove);
   window.addEventListener('touchend', endPan);
+
+  // 静默预加载离线神经网络：页面打开后在后台静默预取并初始化，用户上传照片点击抠图时 0 等待直接出图
+  setTimeout(() => {
+    hdMattingEngine.initOnnxModel('/models/modnet.onnx').catch(() => {});
+  }, 300);
 });
 
 onUnmounted(() => {
