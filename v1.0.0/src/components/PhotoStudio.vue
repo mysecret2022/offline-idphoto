@@ -243,40 +243,53 @@
           <p class="text-[11px] text-slate-500">{{ currentSpec.description }}</p>
         </div>
 
-        <!-- 1. AI 智能抠图换底模块 -->
-        <div class="space-y-2.5 bg-slate-800/40 border border-slate-800 rounded-xl p-3">
+        <!-- 步骤 1：一键智能抠图 (只抠人物·直接消除背景) -->
+        <div class="space-y-2 bg-slate-800/60 border border-slate-700/80 rounded-xl p-3 shadow-md">
           <div class="flex items-center justify-between">
-            <div class="flex items-center space-x-1.5">
-              <Scissors class="w-4 h-4 text-blue-400" />
-              <span class="text-xs font-semibold text-slate-200">AI 智能抠图与人物换底</span>
-            </div>
-            <div class="flex items-center space-x-1.5">
-              <span
-                v-if="cutoutBlob"
-                class="text-[10px] text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded-full flex items-center space-x-1"
-              >
-                <Check class="w-3 h-3" />
-                <span>人像已分离</span>
-              </span>
-              <span
-                v-else-if="isMatting"
-                class="text-[10px] text-amber-400 animate-pulse flex items-center space-x-1"
-              >
-                <Loader2 class="w-3 h-3 animate-spin" />
-                <span>AI 计算中...</span>
-              </span>
-              <button
-                v-if="hasSourceImage && !isMatting"
-                @click="performMatting(true)"
-                class="text-[10px] text-blue-400 hover:text-blue-300 underline"
-                title="重新运行本地 AI 发丝级抠图算法"
-              >
-                {{ cutoutBlob ? '重新抠图' : '一键AI抠图' }}
-              </button>
-            </div>
+            <span class="text-xs font-bold text-slate-100 flex items-center space-x-1.5">
+              <span class="w-4 h-4 rounded-full bg-blue-600 text-[10px] text-white flex items-center justify-center font-bold">1</span>
+              <span>第一步：一键提取人物 (消除背景)</span>
+            </span>
+            <span
+              v-if="cutoutBlob"
+              class="text-[10px] text-emerald-400 bg-emerald-950/80 border border-emerald-800/80 px-2 py-0.5 rounded-full flex items-center space-x-1 font-medium"
+            >
+              <Check class="w-3 h-3" />
+              <span>人物已单独抠出</span>
+            </span>
           </div>
 
-          <!-- 底色选择按钮网格 -->
+          <button
+            @click="performMatting(true, true)"
+            :disabled="!hasSourceImage || isMatting"
+            class="w-full py-2.5 px-3 rounded-xl flex items-center justify-center space-x-2 text-xs font-bold transition shadow-lg"
+            :class="cutoutBlob 
+              ? 'bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-600' 
+              : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-500 hover:from-blue-500 hover:to-indigo-400 text-white shadow-blue-500/25 active:scale-98'"
+          >
+            <Loader2 v-if="isMatting" class="w-4 h-4 animate-spin text-white" />
+            <Scissors v-else class="w-4 h-4 text-amber-300" />
+            <span>{{ isMatting ? 'AI 正在发丝级抠图中...' : (cutoutBlob ? '重新一键抠图 (消除背景)' : '🪄 一键智能抠图 (只提取人物·消除背景)') }}</span>
+          </button>
+          
+          <p class="text-[11px] text-slate-400 leading-snug">
+            {{ cutoutBlob ? '✅ 原图背景已彻底消除！请在下方【第二步】为您抠出的人物随意换上所需的底色：' : '点击后将智能识别人物轮廓，直接把原图杂乱背景消除为纯透明底。' }}
+          </p>
+        </div>
+
+        <!-- 步骤 2：按需选择背景底色 (红/蓝/白/任意色) -->
+        <div class="space-y-2.5 bg-slate-800/40 border border-slate-800 rounded-xl p-3">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-100 flex items-center space-x-1.5">
+              <span class="w-4 h-4 rounded-full bg-indigo-600 text-[10px] text-white flex items-center justify-center font-bold">2</span>
+              <span>第二步：按需选择背景颜色</span>
+            </span>
+            <span class="text-[10px] text-blue-400 font-medium">
+              当前: {{ selectedBg.name }}
+            </span>
+          </div>
+
+          <!-- 预设底色按钮网格 (红/蓝/白等常用色置顶) -->
           <div class="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
             <button
               v-for="bg in bgColors"
@@ -670,26 +683,31 @@ async function loadFile(file: File | Blob) {
   img.onload = async () => {
     sourceImage.value = img;
     currentMode.value = 'upload';
+    // 刚上传时保留原图展示，引导用户点击【第一步：一键提取人物】
+    const origBg = PRESET_BG_COLORS.find(b => b.id === 'bg_original') || PRESET_BG_COLORS[PRESET_BG_COLORS.length - 1];
+    selectedBg.value = origBg;
     resetTransform();
     await nextTick();
     redrawEditor();
-
-    // 如果选中的不是“原图背景”，自动触发智能抠图
-    if (selectedBg.value.value !== 'original') {
-      await performMatting();
-    }
   };
   img.src = url;
 }
 
-// 执行本地端侧发丝级抠图
-async function performMatting(force: boolean = false) {
+// 执行本地端侧发丝级抠图 (参数 switchToTransparent: 是否在抠完后默认消除背景呈现纯透明人像)
+async function performMatting(force: boolean = false, switchToTransparent: boolean = true) {
   if (!sourceImage.value || isMatting.value) return;
-  if (!force && cutoutBlob.value) return;
+  if (!force && cutoutBlob.value) {
+    if (switchToTransparent) {
+      const transBg = PRESET_BG_COLORS.find(b => b.id === 'bg_transparent') || PRESET_BG_COLORS[0];
+      selectedBg.value = transBg;
+      redrawEditor();
+    }
+    return;
+  }
 
   isMatting.value = true;
   mattingProgress.value = 10;
-  mattingStage.value = '正在加载 AI 抠图引擎...';
+  mattingStage.value = 'AI 正在提取人物轮廓并消除背景...';
 
   try {
     const canvas = document.createElement('canvas');
@@ -715,7 +733,14 @@ async function performMatting(force: boolean = false) {
 
     currentCutoutImg = newCutoutImg;
     cutoutBlob.value = blob;
-    emit('show-toast', '本地 AI 发丝级抠图已完成');
+
+    // 抠出人物后，若为“一键抠图”操作，直接消除背景（切换为透明棋盘底），让用户一目了然看清单独的人物
+    if (switchToTransparent) {
+      const transBg = PRESET_BG_COLORS.find(b => b.id === 'bg_transparent');
+      if (transBg) selectedBg.value = transBg;
+    }
+
+    emit('show-toast', '已成功提取人物轮廓！原背景已彻底消除，请在下方选择所需底色');
   } catch (err: any) {
     console.error('抠图失败:', err);
     emit('show-toast', '抠图提示: 请保持原图或重新调整');
@@ -732,7 +757,7 @@ async function applyBgColor(bg: BgColorOption) {
   selectedBg.value = bg;
   if (bg.value !== 'original') {
     if (!cutoutBlob.value && sourceImage.value) {
-      await performMatting();
+      await performMatting(false, false);
     } else {
       redrawEditor();
     }
