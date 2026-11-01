@@ -69,15 +69,16 @@ jobs:
 
       - name: 自动创建或更新 GitHub Release 发布
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         with:
-          name: 离线证件照系统 Android APK 安装包
+          tag_name: v1.0.0
+          name: 离线证件照系统 Android APK 安装包 (v1.0.0)
           body: |
-            ### 📱 离线证件照制作与多人混排系统 - 安卓单机版 APK
+            ### 📱 离线证件照制作与多人混排系统 - 安卓单机版 APK (v1.0.0)
 
-            - **100% 离线端侧推理**：内置 MODNet 发丝级肖像精细抠图 AI 神经网络模型；
+            - **100% 离线端侧推理**：内置极速轻量人像引擎与 MODNet 发丝级 AI 神经网络模型；
             - **零网络零流量**：无后端计算，支持断网/飞行模式下秒级抠图换底；
-            - **支持多人多规格相纸混排打印**：支持 1寸、2寸、国考、教资标准尺寸及 6寸/A4 打印拼版；
+            - **移动端与 iPhone 深度优化**：支持极速秒抠与高清精细双引擎自由切换；
+            - **多人多规格混排打印**：支持 1寸、2寸、国考、教资标准尺寸及 6寸/A4 打印拼版；
             - **原生相机与相册**：免配置 SSL 证书，安装即用。
           files: build-output/offline-idphoto-v1.0.0.apk
         env:
