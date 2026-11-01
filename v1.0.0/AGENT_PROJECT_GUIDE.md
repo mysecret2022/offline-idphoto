@@ -109,6 +109,16 @@ docker compose up -d --build
    - 解决：将 MediaPipe 核心模型（`.wasm`、`.tflite`、`.binarypb`、`.js`）完整下沉部署至 `public/mediapipe/`，并在 Nginx 配置文件中为其注册完整的静态类型头与 `Cross-Origin-Resource-Policy: same-origin`，彻底实现 100% 离线端侧高精抠图与秒级换底。
    - 解决：在 `vite.config.ts` 以及 `nginx.conf` 中强制注入 `Cross-Origin-Opener-Policy: same-origin` 和 `Cross-Origin-Embedder-Policy: require-corp`。
 
+7. **WebGL 分割蒙版缺失 Alpha 通道导致背景杂色未被消除**：
+   - 原因：MediaPipe SelfieSegmentation 生成的 `results.segmentationMask` 在 WebGL 模式下（`alpha: false`）其画布 Alpha 固定为 255，分割概率仅体现在 RGB 通道中。原代码直接采用 `destination-in` 进行图像合成，由于蒙版 Alpha 恒等于 1.0，导致原图杂乱纹理与底色未被剔除。
+   - 解决：在 `hdMattingEngine.ts` 与 `realtimeSegmenter.ts` 中手写内存像素映射提取算法 `applySegmentationMask`，逐像素读取蒙版灰度值，通过 `smoothstep(80, 170)` 过滤底噪并将背景区域的真实 Alpha 强制清零，发丝边缘进行平滑抗锯齿羽化，彻底实现背景消除。
+
+8. **操作流程重构为两步式交互向导（先提取人物消除背景，再自选底色）**：
+   - 原因：原交互在上传照片后直接默认套用纯蓝底色，用户无法直观感知“一键抠图提取单人”的中间结果与透明效果，心理预期不符。
+   - 解决：将右侧控制面板重构为清晰的“两步走”向导：
+     - **第一步：【🪄 一键智能抠图 (只提取人物·消除背景)】**：大号高亮按钮，点击后利用本地 AI 彻底清除原图背景杂色，展示 PS 级别的纯透明棋盘格人物轮廓；
+     - **第二步：【按需选择背景颜色】**：用户确认人物已单独抠出后，自由点击中国红、标准蓝、纯白等预设底色或使用调色盘自定义颜色。
+
 ---
 
 ## 4. 路线图与待改进功能
