@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  offline-idphoto:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.quick
+    container_name: offline-idphoto
+    restart: always
+    ports:
+      - "8080:80"    # HTTP 访问入口，电脑本机打开 http://localhost:8080
+      - "8443:443"   # HTTPS 访问入口，局域网手机打开 https://<IP>:8443 (解锁相机与WebGPU权限)
+    volumes:
+      # 可选持久化证书目录（若为空，容器启动时将自动为您生成10年有效期的自签证书）
+      - ./docker/certs:/etc/nginx/certs
+    environment:
+      - TZ=Asia/Shanghai

@@ -1,0 +1,17 @@
+{
+  "name": "离线端侧证件照制作与多人混排打印系统",
+  "short_name": "证件照制作",
+  "description": "纯前端端侧驱动的离线标准证件照制作与 6寸/A4 自动混排拼版打印系统",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
