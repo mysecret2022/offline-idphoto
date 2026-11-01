@@ -15,13 +15,17 @@
 - **快门抓拍精抠**：高精单帧模型（基于 onnxruntime-web，优先调用 WebGPU 硬件加速，平滑降级 Wasm SIMD 多线程），追求发丝级精细抠图。
 
 ### 3. 标准规格库与动态引导取景框
-- **预设规格**：
+- **预设规格库**：
   - 标准 1 寸：295 × 413 px (25 × 35 mm)
   - 大 1 寸：390 × 567 px (33 × 48 mm)
   - 标准 2 寸：413 × 579 px (35 × 49 mm)
   - 小 2 寸：413 × 531 px (35 × 45 mm)
+  - 英语四六级 (CET)：390 × 567 px (33 × 48 mm)
+  - 教师资格证 (NTCE)：413 × 626 px (35 × 53 mm)
+  - 计算机等级考试 (NCRE)：300 × 400 px
+  - 国家公务员考试 (国考)：413 × 531 px
   - 自定义尺寸：支持按 mm 或 px 自由输入，自动以 300 DPI 精准换算。
-- **动态引导遮罩**：等比取景框缩放，叠加标准头顶留白线、人脸椭圆黄金比例圈、双肩定位参考线。
+- **动态引导遮罩**：等比取景框缩放，叠加标准头顶留白线、人脸椭圆黄金比例圈、双肩定位参考线、居中垂直对称轴。
 
 ### 4. 图像后处理与物理尺寸合规
 - **目标体积 (KB) 精准二分法压缩**：支持 20KB~100KB 等报考常用体积限制，通过 Canvas 二分法动态逼近 JPEG 质量参数（迭代 5~6 次），兼顾极限制与最高画质。
@@ -38,80 +42,171 @@
 
 ---
 
-## 🚀 快速启动与部署
+## 🐳 Docker Compose 部署完全指南 (推荐)
 
-### 方式一：Docker Compose 一键启动 (推荐)
+项目容器内置了轻量化 Nginx Alpine，并特别配置了**跨域隔离安全响应头（COOP / COEP）**，支持现代浏览器端侧多线程极速推理。
 
-1. **生成本地局域网 SSL 证书** (手机调用摄像头强制要求 HTTPS)：
-   ```bash
-   # Linux / macOS
-   chmod +x docker/generate-ssl.sh
-   ./docker/generate-ssl.sh
+### 1. 标准 `docker-compose.yml` 完整配置
 
-   # Windows
-   docker\generate-ssl.bat
-   ```
+如果您需要将本服务部署在个人电脑、私有服务器或家用 NAS（如群晖 Synology、威联通 QNAP、绿联、极空间、Unraid、1Panel、Portainer 等）上，可直接使用以下编排配置：
 
-2. **构建并启动容器**：
-   ```bash
-   docker-compose up -d --build
-   ```
+```yaml
+version: '3.8'
 
-3. **访问应用**：
-   - 本地主机：`https://localhost`
-   - 局域网移动端：`https://<局域网IP>`（首次访问在手机信任自签证书即可）
+services:
+  offline-idphoto:
+    # 构建上下文与轻量镜像定义
+    build:
+      context: ./v1.0.0
+      dockerfile: docker/Dockerfile.quick
+    container_name: offline-idphoto
+    restart: always
+    ports:
+      # 格式为 "宿主机访问端口 : 容器内部端口"
+      - "8080:80"    # HTTP 访问入口：适合电脑本机浏览器使用 (http://localhost:8080)
+      - "8443:443"   # HTTPS 访问入口：适合局域网移动端拍照使用 (https://<宿主机IP>:8443)
+    volumes:
+      # SSL 证书持久化挂载目录：
+      # - 模式 A (零配置开箱即用)：初次启动若该目录为空，容器启动脚本会自动生成 10 年有效期的自签证书。
+      # - 模式 B (自有域名证书)：将您的 cert.pem 与 key.pem 放入此挂载目录即可实现无缝替换。
+      - ./v1.0.0/docker/certs:/etc/nginx/certs
+    environment:
+      - TZ=Asia/Shanghai
+```
 
 ---
 
-### 方式二：本地前端调试开发
+### 2. 命令行极速部署步骤 (3 步搞定)
+
+#### 第 1 步：克隆仓库并进入目录
+```bash
+git clone https://github.com/mysecret2022/offline-idphoto.git
+cd offline-idphoto
+```
+
+#### 第 2 步：一键构建并启动容器
+```bash
+docker compose up -d --build
+```
+> *(注：构建采用轻量化产物镜像，约 3~5 秒即可构建完成并启动。)*
+
+#### 第 3 步：在浏览器中访问使用
+- **电脑本机访问（HTTP）**：  
+  在浏览器中打开：👉 **`http://localhost:8080`**
+- **手机 / 平板 / 局域网其他设备访问（HTTPS）**：  
+  在移动端浏览器中打开：👉 **`https://<您的宿主机局域网IP>:8443`**  
+  *(例如：`https://192.168.1.100:8443`)*
+
+---
+
+### 3. 为什么同时提供 8080 (HTTP) 与 8443 (HTTPS) 端口？
+
+| 访问端口 | 访问协议 | 典型适用场景 | 摄像头与 WebGPU 支持说明 |
+| :--- | :--- | :--- | :--- |
+| **8080** | HTTP | 本地电脑（Windows / Mac）浏览器访问 | 浏览器默认将 `localhost` 和 `127.0.0.1` 判定为安全上下文（Secure Context），无需配置证书即可直接调用摄像头拍照并开启 GPU 加速。 |
+| **8443** | HTTPS | 手机、iPad、局域网内其他设备跨机访问 | **移动端核心要求**：苹果 iOS Safari 与安卓 Chrome 在跨设备访问非 localhost 地址时，**强制要求使用 HTTPS 协议**，否则直接禁用摄像头拍照（`getUserMedia`）与 WebGPU。容器已内置自签安全证书，手机首次打开点击“高级 ➔ 继续前往”即可授权调用相机！ |
+
+---
+
+### 4. 常见管理与运维命令
+
+| 操作需求 | 执行命令 | 说明 |
+| :--- | :--- | :--- |
+| **查看运行状态** | `docker compose ps` | 查看容器是否正在正常运行（状态为 `Up`） |
+| **查看运行日志** | `docker compose logs -f` | 实时查看 Nginx 访问与证书初始化日志 |
+| **重启容器** | `docker compose restart` | 快速重启服务 |
+| **更新版本并重新构建** | `docker compose up -d --build` | 代码修改后快速构建并无缝更新运行 |
+| **停止并退出容器** | `docker compose down` | 停止并释放容器网络与端口占用 |
+
+---
+
+### 5. 在 NAS / 面板（1Panel / Portainer / 群晖）中图形化部署
+
+如果您使用 Web 图形界面管理容器：
+1. **1Panel / Portainer**：
+   - 进入【容器】➔【编排 / Compose】➔【创建编排】；
+   - 填入名称 `offline-idphoto`，将上文中的 `docker-compose.yml` 贴入编辑框；
+   - 点击【创建并启动】即可。
+2. **群晖 Synology Container Manager**：
+   - 打开【Container Manager】➔【项目】➔【新增】；
+   - 设定项目名称并上传/粘贴上述 `docker-compose.yml`；
+   - 端口设置好映射（8080 与 8443），点击完成即可在群晖上常驻运行。
+
+---
+
+## 🛠️ 本地前端源码调试开发 (无 Docker 环境)
+
+如果您希望对前端 Vue 源码进行二次开发或本地调试：
 
 ```bash
 cd v1.0.0
 
-# 1. 安装依赖
+# 1. 安装项目依赖
 pnpm install
 
-# 2. 启动开发服务器 (自动开启跨域隔离 COOP/COEP)
+# 2. 启动本地开发热重载服务器 (自动开启跨域隔离 COOP/COEP)
 pnpm run dev
 
-# 3. 构建生产包
+# 3. 编译生产静态包
 pnpm run build
 ```
 
 ---
 
-## 📂 项目结构
+## 📂 项目文件树总览
 
 ```text
-├── docker/
-│   ├── Dockerfile            # 基于 node 编译与 nginx:alpine 运行的多阶段镜像
-│   ├── nginx.conf            # HTTPS 强制跳转、跨域隔离 COOP/COEP 安全响应头
-│   ├── generate-ssl.sh       # Linux 自签证书脚本 (含 SAN 扩展)
-│   └── generate-ssl.bat      # Windows 批处理自签证书脚本
-├── public/
-│   ├── favicon.svg           # 矢量图标
-│   ├── manifest.webmanifest  # PWA 描述配置
-│   └── sw.js                 # 离线缓存 Service Worker
-├── src/
-│   ├── components/
-│   │   ├── CameraViewfinder.vue   # 实时取景框、引导遮罩、前置底色切换、抓拍
-│   │   ├── PhotoTray.vue          # 多人照片待印托盘、张数计数器
-│   │   ├── ExportModal.vue        # 单张精准 KB 二分压缩与 300 DPI 导出
-│   │   └── PrintLayoutModal.vue   # 6寸/A4 自动混排拼版、十字裁切线、脚标
-│   ├── core/
-│   │   ├── specs.ts               # 规格库定义与 mm-px 300 DPI 换算
-│   │   ├── dpiWriter.ts           # 纯前端 JPEG JFIF 300 DPI 二进制注入器
-│   │   ├── compressor.ts          # 二分法目标体积压缩算法
-│   │   ├── realtimeSegmenter.ts   # MediaPipe 实时低功耗预览分割 (15fps)
-│   │   ├── hdMattingEngine.ts     # ONNX Runtime (WebGPU/Wasm) 高精抠图
-│   │   └── packingAlgorithm.ts    # 多人多规格相纸二维流式拼版算法
-│   ├── App.vue                    # 应用主根组件与状态串联
-│   ├── main.ts
-│   └── style.css
-├── package.json
-├── vite.config.ts
-└── AGENT_PROJECT_GUIDE.md         # 面向智能体的架构与维护说明
+├── README.md                         # 项目总说明与 Docker Compose 完全指南
+├── docker-compose.yml                # 根目录快速启动编排文件
+├── LICENSE                           # MIT 开源许可证
+└── v1.0.0/                           # 正式版本归档
+    ├── AGENT_PROJECT_GUIDE.md        # 面向智能体/开发者的架构自说明文档
+    ├── docker-compose.yml            # 版本内容器编排定义
+    ├── docker/
+    │   ├── Dockerfile                # 基于 node 编译与 nginx:alpine 的多阶段构建镜像
+    │   ├── Dockerfile.quick          # 极速轻量构建镜像 (基于预编译产物)
+    │   ├── nginx.conf                # 跨域隔离安全响应头、HTTP/HTTPS、Wasm MIME
+    │   ├── entrypoint.sh             # 容器启动自检与 10 年自签证书自动生成
+    │   ├── generate-ssl.sh           # 自签证书脚本 (Linux/macOS)
+    │   └── generate-ssl.bat          # 自签证书脚本 (Windows)
+    ├── dist/                         # 预编译静态分发资产 (含 WebAssembly 二进制)
+    ├── src/
+    │   ├── components/
+    │   │   ├── PhotoStudio.vue       # 证件照核心工作台 (上传/拍照/拖拽/对齐/换底)
+    │   │   ├── PhotoTray.vue         # 多人照片待印托盘、张数计数器
+    │   │   ├── ExportModal.vue       # 单张精准 KB 二分压缩与 300 DPI 导出
+    │   │   └── PrintLayoutModal.vue  # 6寸/A4 自动混排拼版、十字裁切线、脚标
+    │   ├── core/
+    │   │   ├── specs.ts              # 规格库定义与 mm-px 300 DPI 换算
+    │   │   ├── dpiWriter.ts          # 纯前端 JPEG JFIF 300 DPI 二进制注入器
+    │   │   ├── compressor.ts         # 二分法目标体积压缩算法
+    │   │   ├── realtimeSegmenter.ts  # MediaPipe 实时低功耗预览分割 (15fps)
+    │   │   ├── hdMattingEngine.ts    # ONNX Runtime (WebGPU/Wasm) 高精抠图
+    │   │   └── packingAlgorithm.ts   # 多人多规格相纸二维流式拼版算法
+    │   ├── App.vue                   # 根组件
+    │   └── main.ts
+    ├── package.json
+    └── vite.config.ts
 ```
+
+---
+
+## ❓ 常见问题排查 (FAQ)
+
+### Q1: 手机打开后提示“无法使用相机”或画面黑屏？
+- **原因**：移动端浏览器（Safari / Chrome）对安全上下文有严格限制，若通过 `http://` 访问外部 IP，系统会直接禁用摄像头硬件 API。
+- **解决方法**：请务必在手机端使用 **`https://<IP>:8443`**（注意协议是 `https`，端口是 `8443`）。首次打开出现安全证书警告属于正常现象，点击“高级 ➔ 继续访问”即可正常授权摄像头拍照。
+
+### Q2: 提示端口冲突（例如 8080 或 8443 已被占用）？
+- **解决方法**：修改 `docker-compose.yml` 中的端口映射，仅需修改冒号左侧的宿主机端口即可，例如改为：
+  ```yaml
+  ports:
+    - "8090:80"    # 改为本机 8090 端口访问
+    - "9443:443"   # 改为本机 9443 端口访问
+  ```
+
+### Q3: 导出的照片上传到某些报名系统提示“DPI 不足”？
+- **解答**：本系统导出的所有证件照均经过纯前端二进制 JFIF 标头注入，将物理分辨率标记严格设置为 **300 DPI**。您可以在 Windows 上右键照片 ➔【属性】➔【详细信息】中直接核对水平与垂直分辨率，100% 满足各类国考、教资与签证系统的冲印质检标准。
 
 ---
 
