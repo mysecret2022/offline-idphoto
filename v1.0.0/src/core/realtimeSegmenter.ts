@@ -28,8 +28,8 @@ export class RealtimeSegmenter {
     try {
       this.segmenter = new SelfieSegmentation({
         locateFile: (file: string) => {
-          // 优先尝试本地或公共 CDN 分发路径
-          return `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1.1675465747/${file}`;
+          // 本地无缝静态托管，绝对离线且无跨域限制
+          return `/mediapipe/${file}`;
         }
       });
 

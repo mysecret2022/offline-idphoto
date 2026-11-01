@@ -98,6 +98,15 @@ docker compose up -d --build
 
 4. **WebAssembly 多线程 SharedArrayBuffer 跨域隔离保护**：
    - 原因：Wasm 多线程要求必须处于隔离环境。
+   - 解决：Nginx 配置 `Cross-Origin-Opener-Policy: same-origin` 与 `Cross-Origin-Embedder-Policy: require-corp`。
+
+5. **大图上传只有放大无法缩小问题**：
+   - 原因：`PhotoStudio.vue` 原缩放范围硬编码为 `0.3~2.5`，对于 4000 像素的高清原图，适配 1 寸证件照的目标基准比例为 `0.07~0.13`，硬编码的下限导致画面瞬间撑爆且无法缩小。
+   - 解决：重构缩放引擎，引入 `baseFitScale` 自适应基准贴合比例，缩放滑块采用相对比例 `zoomPercent`（15% ~ 300%），支持 `[-] 缩小`、`[+] 放大` 按钮与平滑滚轮缩放，并保持人脸视口中心平滑缩放。
+
+6. **离线 AI 智能抠图换底不生效与 CDN 跨域拦截**：
+   - 原因：MediaPipe 默认由远程 jsdelivr CDN 加载模型权重与 wasm 文件，受浏览器的 COEP (`require-corp`) 跨域隔离限制被直接拦截，且无网环境下无法使用。
+   - 解决：将 MediaPipe 核心模型（`.wasm`、`.tflite`、`.binarypb`、`.js`）完整下沉部署至 `public/mediapipe/`，并在 Nginx 配置文件中为其注册完整的静态类型头与 `Cross-Origin-Resource-Policy: same-origin`，彻底实现 100% 离线端侧高精抠图与秒级换底。
    - 解决：在 `vite.config.ts` 以及 `nginx.conf` 中强制注入 `Cross-Origin-Opener-Policy: same-origin` 和 `Cross-Origin-Embedder-Policy: require-corp`。
 
 ---

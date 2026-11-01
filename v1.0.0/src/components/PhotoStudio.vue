@@ -209,7 +209,7 @@
           <div class="flex items-center space-x-3 mt-3 text-xs text-slate-400">
             <span>🖱️ 拖拽平移画面</span>
             <span>·</span>
-            <span>🔍 滚轮/滑块缩放: {{ Math.round(transform.scale * 100) }}%</span>
+            <span>🔍 缩放大小: {{ zoomPercent }}%</span>
             <button @click="resetTransform" class="text-blue-400 hover:text-blue-300 underline text-[11px] ml-1">
               居中复位
             </button>
@@ -243,26 +243,57 @@
           <p class="text-[11px] text-slate-500">{{ currentSpec.description }}</p>
         </div>
 
-        <!-- 1. 智能抠图换底色 -->
-        <div class="space-y-2">
-          <label class="block text-xs font-semibold text-slate-300">智能换底色:</label>
-          <div class="grid grid-cols-4 gap-2">
+        <!-- 1. AI 智能抠图换底模块 -->
+        <div class="space-y-2.5 bg-slate-800/40 border border-slate-800 rounded-xl p-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-1.5">
+              <Scissors class="w-4 h-4 text-blue-400" />
+              <span class="text-xs font-semibold text-slate-200">AI 智能抠图与人物换底</span>
+            </div>
+            <div class="flex items-center space-x-1.5">
+              <span
+                v-if="cutoutBlob"
+                class="text-[10px] text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded-full flex items-center space-x-1"
+              >
+                <Check class="w-3 h-3" />
+                <span>人像已分离</span>
+              </span>
+              <span
+                v-else-if="isMatting"
+                class="text-[10px] text-amber-400 animate-pulse flex items-center space-x-1"
+              >
+                <Loader2 class="w-3 h-3 animate-spin" />
+                <span>AI 计算中...</span>
+              </span>
+              <button
+                v-if="hasSourceImage && !isMatting"
+                @click="performMatting(true)"
+                class="text-[10px] text-blue-400 hover:text-blue-300 underline"
+                title="重新运行本地 AI 发丝级抠图算法"
+              >
+                {{ cutoutBlob ? '重新抠图' : '一键AI抠图' }}
+              </button>
+            </div>
+          </div>
+
+          <!-- 底色选择按钮网格 -->
+          <div class="grid grid-cols-4 gap-1.5">
             <button
               v-for="bg in bgColors"
               :key="bg.id"
               @click="applyBgColor(bg)"
-              class="flex flex-col items-center justify-center p-2 rounded-xl border transition-all text-[11px]"
-              :class="selectedBg.id === bg.id ? 'border-blue-500 bg-blue-950/40 text-blue-300 font-medium' : 'border-slate-800 hover:border-slate-700 bg-slate-800/40 text-slate-400'"
+              class="flex flex-col items-center justify-center p-1.5 rounded-xl border transition-all text-[11px]"
+              :class="selectedBg.id === bg.id ? 'border-blue-500 bg-blue-950/50 text-blue-300 font-semibold shadow' : 'border-slate-800 hover:border-slate-700 bg-slate-800/60 text-slate-400'"
             >
               <span class="w-6 h-6 rounded-full mb-1 flex items-center justify-center shadow-sm" :class="bg.previewClass">
                 <Check v-if="selectedBg.id === bg.id" class="w-3.5 h-3.5" :class="bg.id === 'bg_white' ? 'text-slate-900' : 'text-white'" />
               </span>
-              <span>{{ bg.name }}</span>
+              <span class="truncate w-full text-center text-[10px]">{{ bg.name }}</span>
             </button>
           </div>
         </div>
 
-        <!-- 核心功能：AI 智能人像国标对齐 -->
+        <!-- 2. 核心功能：AI 智能人像国标对齐 (自动头顶留白与人脸居中) -->
         <button
           v-if="hasSourceImage"
           @click="triggerAutoAlignment"
@@ -280,21 +311,42 @@
           <span class="text-[11px] bg-white/20 group-hover:bg-white/30 px-2 py-0.5 rounded-full font-medium transition">一键对齐</span>
         </button>
 
-        <!-- 2. 人像微调控制 (缩放滑块、旋转、辅助线开关) -->
+        <!-- 3. 人像微调控制 (缩放滑块支持大范围放大与缩小、旋转、辅助线开关) -->
         <div v-if="hasSourceImage" class="space-y-3 bg-slate-800/40 border border-slate-800 rounded-xl p-3">
           <div class="flex items-center justify-between text-xs">
-            <span class="font-medium text-slate-300">缩放大小</span>
-            <span class="text-slate-400">{{ Math.round(transform.scale * 100) }}%</span>
+            <span class="font-medium text-slate-300">缩放大小 (可放大/缩小)</span>
+            <button @click="resetTransform" class="text-[11px] text-blue-400 hover:text-blue-300 underline">
+              复位 100%
+            </button>
           </div>
-          <input
-            v-model.number="transform.scale"
-            type="range"
-            min="0.4"
-            max="2.5"
-            step="0.02"
-            @input="redrawEditor"
-            class="w-full accent-blue-500 cursor-pointer"
-          />
+
+          <!-- 滑块与缩小/放大按钮 -->
+          <div class="flex items-center space-x-2">
+            <button
+              @click="zoomOut"
+              class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+              title="缩小"
+            >
+              <ZoomOut class="w-3.5 h-3.5" />
+            </button>
+            <input
+              v-model.number="zoomPercent"
+              type="range"
+              min="15"
+              max="300"
+              step="1"
+              @input="onZoomSliderChange"
+              class="flex-1 accent-blue-500 cursor-pointer"
+            />
+            <button
+              @click="zoomIn"
+              class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+              title="放大"
+            >
+              <ZoomIn class="w-3.5 h-3.5" />
+            </button>
+            <span class="w-10 text-right text-xs text-slate-300 font-mono">{{ zoomPercent }}%</span>
+          </div>
 
           <div class="flex items-center justify-between pt-1">
             <button
@@ -387,7 +439,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import {
   Upload, Camera, UploadCloud, RefreshCw, Layers, Printer, Download,
-  PlusCircle, Check, RotateCcw, RotateCw, Loader2, Sparkles
+  PlusCircle, Check, RotateCcw, RotateCw, Loader2, Sparkles, ZoomIn, ZoomOut, Scissors
 } from 'lucide-vue-next';
 import { PhotoSpec, BgColorOption, TrayItem } from '../types';
 import { PRESET_PHOTO_SPECS, PRESET_BG_COLORS, createCustomSpec, mmToPx } from '../core/specs';
@@ -443,6 +495,8 @@ const realtimeSegmenter = new RealtimeSegmenter();
 let lastCameraMask: ImageBitmap | HTMLCanvasElement | null = null;
 
 // 画布变换状态 (拖拽平移与缩放)
+const zoomPercent = ref<number>(100);
+const baseFitScale = ref<number>(1.0);
 const transform = reactive({
   scale: 1,
   x: 0,
@@ -568,6 +622,7 @@ function handleWindowPaste(e: ClipboardEvent) {
 async function loadFile(file: File | Blob) {
   originalBlob.value = file;
   cutoutBlob.value = null; // 重置抠图缓存
+  currentCutoutImg = null;
 
   const url = URL.createObjectURL(file);
   const img = new Image();
@@ -587,12 +642,13 @@ async function loadFile(file: File | Blob) {
 }
 
 // 执行本地端侧发丝级抠图
-async function performMatting() {
-  if (!sourceImage.value || cutoutBlob.value || isMatting.value) return;
+async function performMatting(force: boolean = false) {
+  if (!sourceImage.value || isMatting.value) return;
+  if (!force && cutoutBlob.value) return;
 
   isMatting.value = true;
   mattingProgress.value = 10;
-  mattingStage.value = '正在准备人像深度特征...';
+  mattingStage.value = '正在加载 AI 抠图引擎...';
 
   try {
     const canvas = document.createElement('canvas');
@@ -607,11 +663,21 @@ async function performMatting() {
       mattingProgress.value = progress;
     });
 
+    // 预载入抠图结果为 Image，确保在 Canvas 绘制时不闪烁、零延迟
+    const imgUrl = URL.createObjectURL(blob);
+    const newCutoutImg = new Image();
+    await new Promise((resolve, reject) => {
+      newCutoutImg.onload = resolve;
+      newCutoutImg.onerror = reject;
+      newCutoutImg.src = imgUrl;
+    });
+
+    currentCutoutImg = newCutoutImg;
     cutoutBlob.value = blob;
     emit('show-toast', '本地 AI 发丝级抠图已完成');
   } catch (err: any) {
     console.error('抠图失败:', err);
-    emit('show-toast', '抠图提示: 保持原图或重新调整');
+    emit('show-toast', '抠图提示: 请保持原图或重新调整');
   } finally {
     isMatting.value = false;
     await triggerAutoAlignment();
@@ -623,8 +689,12 @@ async function performMatting() {
 // 切换背景颜色
 async function applyBgColor(bg: BgColorOption) {
   selectedBg.value = bg;
-  if (bg.value !== 'original' && !cutoutBlob.value && sourceImage.value) {
-    await performMatting();
+  if (bg.value !== 'original') {
+    if (!cutoutBlob.value && sourceImage.value) {
+      await performMatting();
+    } else {
+      redrawEditor();
+    }
   } else {
     redrawEditor();
   }
@@ -642,6 +712,9 @@ async function triggerAutoAlignment() {
     transform.x = result.x;
     transform.y = result.y;
     transform.rotation = 0;
+    if (baseFitScale.value > 0) {
+      zoomPercent.value = Math.round((result.scale / baseFitScale.value) * 100);
+    }
     await nextTick();
     redrawEditor();
     if (result.success) {
@@ -660,17 +733,63 @@ function resetTransform() {
   const imgW = sourceImage.value.naturalWidth;
   const imgH = sourceImage.value.naturalHeight;
 
-  // 默认使人像充满画面并略微靠上（符合头顶留白规范）
+  // 默认使人像贴合画面
   const scaleW = spec.widthPx / imgW;
   const scaleH = spec.heightPx / imgH;
-  const baseScale = Math.max(scaleW, scaleH);
+  baseFitScale.value = Math.max(scaleW, scaleH);
+  zoomPercent.value = 100;
 
-  transform.scale = baseScale * 1.05;
+  transform.scale = baseFitScale.value * 1.05;
   transform.rotation = 0;
   transform.x = (spec.widthPx - imgW * transform.scale) / 2;
   transform.y = (spec.heightPx - imgH * transform.scale) * 0.45; // 居中略微偏上
 
   redrawEditor();
+}
+
+// 缩放控制核心函数（基于取景框中心平滑缩放）
+function applyZoomPercent(percent: number) {
+  if (!sourceImage.value) return;
+  const spec = currentSpec.value;
+  const imgW = sourceImage.value.naturalWidth;
+  const imgH = sourceImage.value.naturalHeight;
+
+  const oldScale = transform.scale;
+  const targetScale = baseFitScale.value * (percent / 100);
+  if (targetScale <= 0) return;
+
+  // 保持图像中心位置平滑缩放
+  const imgCenterX = transform.x + (imgW * oldScale) / 2;
+  const imgCenterY = transform.y + (imgH * oldScale) / 2;
+
+  transform.scale = targetScale;
+  transform.x = imgCenterX - (imgW * targetScale) / 2;
+  transform.y = imgCenterY - (imgH * targetScale) / 2;
+
+  redrawEditor();
+}
+
+function onZoomSliderChange() {
+  applyZoomPercent(zoomPercent.value);
+}
+
+function zoomIn() {
+  const next = Math.min(300, zoomPercent.value + 5);
+  zoomPercent.value = next;
+  applyZoomPercent(next);
+}
+
+function zoomOut() {
+  const next = Math.max(15, zoomPercent.value - 5);
+  zoomPercent.value = next;
+  applyZoomPercent(next);
+}
+
+function handleWheelZoom(e: WheelEvent) {
+  const step = e.deltaY < 0 ? 5 : -5;
+  const next = Math.min(300, Math.max(15, zoomPercent.value + step));
+  zoomPercent.value = next;
+  applyZoomPercent(next);
 }
 
 function rotateImage(deg: number) {
@@ -719,13 +838,6 @@ function endPan() {
   isPanning = false;
 }
 
-function handleWheelZoom(e: WheelEvent) {
-  const delta = e.deltaY < 0 ? 0.05 : -0.05;
-  const newScale = Math.min(Math.max(transform.scale + delta, 0.3), 3.0);
-  transform.scale = newScale;
-  redrawEditor();
-}
-
 // 核心重绘函数
 let currentCutoutImg: HTMLImageElement | null = null;
 async function redrawEditor() {
@@ -763,18 +875,16 @@ async function redrawEditor() {
   }
 
   // 2. 绘制人像层
-  if (cutoutBlob.value) {
-    if (!currentCutoutImg || currentCutoutImg.src !== (cutoutBlob.value as any)._cachedUrl) {
-      const url = URL.createObjectURL(cutoutBlob.value);
-      currentCutoutImg = new Image();
-      (cutoutBlob.value as any)._cachedUrl = url;
-      currentCutoutImg.onload = () => {
-        renderImageLayer(ctx, currentCutoutImg!);
-      };
-      currentCutoutImg.src = url;
-    } else {
-      renderImageLayer(ctx, currentCutoutImg);
-    }
+  if (currentCutoutImg) {
+    renderImageLayer(ctx, currentCutoutImg);
+  } else if (cutoutBlob.value) {
+    const url = URL.createObjectURL(cutoutBlob.value);
+    const img = new Image();
+    img.onload = () => {
+      currentCutoutImg = img;
+      renderImageLayer(ctx, img);
+    };
+    img.src = url;
   } else {
     // 尚未抠图时先展示原图作为占位
     renderImageLayer(ctx, sourceImage.value);

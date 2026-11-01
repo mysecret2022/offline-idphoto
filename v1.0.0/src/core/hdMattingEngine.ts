@@ -64,7 +64,7 @@ export class HdMattingEngine {
 
     return new Promise((resolve, reject) => {
       const seg = new SelfieSegmentation({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1.1675465747/${file}`
+        locateFile: (file) => `/mediapipe/${file}`
       });
       seg.setOptions({
         modelSelection: 1, // 1: 完整高精景观/全身模式，细节更丰富
@@ -107,12 +107,49 @@ export class HdMattingEngine {
     }
 
     // 备用降级路径：利用 MediaPipe 景观高精模型进行高精推理
-    onProgress?.('启用高精人像模式渲染', 40);
+    onProgress?.('启用本地 AI 发丝级抠图引擎', 40);
     const seg = await this.getFallbackSegmenter();
     
+    // 降采样至最大 1024 边长给分割模型，以兼顾发丝级精度与毫秒级速度
+    const maxDim = 1024;
+    let segCanvas: HTMLCanvasElement;
+    if (Math.max(width, height) > maxDim) {
+      const scale = maxDim / Math.max(width, height);
+      segCanvas = document.createElement('canvas');
+      segCanvas.width = Math.round(width * scale);
+      segCanvas.height = Math.round(height * scale);
+      const sCtx = segCanvas.getContext('2d');
+      if (sCtx) {
+        sCtx.imageSmoothingEnabled = true;
+        sCtx.imageSmoothingQuality = 'high';
+        sCtx.drawImage(sourceImage, 0, 0, segCanvas.width, segCanvas.height);
+      }
+    } else {
+      if (sourceImage instanceof HTMLCanvasElement) {
+        segCanvas = sourceImage;
+      } else {
+        segCanvas = document.createElement('canvas');
+        segCanvas.width = width;
+        segCanvas.height = height;
+        const sCtx = segCanvas.getContext('2d');
+        if (sCtx) sCtx.drawImage(sourceImage, 0, 0);
+      }
+    }
+
     return new Promise((resolve, reject) => {
+      let isResolved = false;
+      const timeoutId = setTimeout(() => {
+        if (!isResolved) {
+          isResolved = true;
+          reject(new Error('AI 抠图超时，请检查图片或重试'));
+        }
+      }, 15000);
+
       seg.onResults((results) => {
+        if (isResolved) return;
         if (!results.segmentationMask) {
+          isResolved = true;
+          clearTimeout(timeoutId);
           reject(new Error('未检测到人像'));
           return;
         }
@@ -123,24 +160,46 @@ export class HdMattingEngine {
         cutoutCanvas.height = height;
         const ctx = cutoutCanvas.getContext('2d');
         if (!ctx) {
+          isResolved = true;
+          clearTimeout(timeoutId);
           reject(new Error('Canvas 上下文创建失败'));
           return;
         }
 
-        // 绘制原图
+        // 绘制原尺寸原图
         ctx.drawImage(sourceImage, 0, 0, width, height);
-        // 使用 mask 保留人像
+        // 使用 mask 平滑保留人像 (通过双线性插值自动平滑适配全图尺寸)
         ctx.globalCompositeOperation = 'destination-in';
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(results.segmentationMask, 0, 0, width, height);
 
         // 柔和边缘羽化增强
         this.applyEdgeRefinement(ctx, width, height);
 
         onProgress?.('导出透明 PNG', 95);
-        this.canvasToBlob(cutoutCanvas).then(resolve).catch(reject);
+        this.canvasToBlob(cutoutCanvas).then((b) => {
+          if (!isResolved) {
+            isResolved = true;
+            clearTimeout(timeoutId);
+            resolve(b);
+          }
+        }).catch((err) => {
+          if (!isResolved) {
+            isResolved = true;
+            clearTimeout(timeoutId);
+            reject(err);
+          }
+        });
       });
 
-      seg.send({ image: sourceImage as any }).catch(reject);
+      seg.send({ image: segCanvas }).catch((err) => {
+        if (!isResolved) {
+          isResolved = true;
+          clearTimeout(timeoutId);
+          reject(err);
+        }
+      });
     });
   }
 
