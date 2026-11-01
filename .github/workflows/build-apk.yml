@@ -12,6 +12,8 @@ jobs:
   build-android-apk:
     name: 编译 Android APK 安装包
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: 检出仓库代码 (Checkout Repository)
