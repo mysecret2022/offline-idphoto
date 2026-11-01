@@ -262,6 +262,24 @@
           </div>
         </div>
 
+        <!-- 核心功能：AI 智能人像国标对齐 -->
+        <button
+          v-if="hasSourceImage"
+          @click="triggerAutoAlignment"
+          class="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg shadow-blue-500/20 transition active:scale-95 group border border-blue-400/30"
+        >
+          <div class="flex items-center space-x-2 text-left">
+            <Sparkles class="w-4 h-4 text-amber-300 animate-pulse" />
+            <div>
+              <div class="text-xs font-bold leading-tight flex items-center space-x-1">
+                <span>AI 智能人脸国标对齐</span>
+              </div>
+              <div class="text-[10px] text-blue-100 opacity-90">头顶留白约8.5%，居中黄金比例</div>
+            </div>
+          </div>
+          <span class="text-[11px] bg-white/20 group-hover:bg-white/30 px-2 py-0.5 rounded-full font-medium transition">一键对齐</span>
+        </button>
+
         <!-- 2. 人像微调控制 (缩放滑块、旋转、辅助线开关) -->
         <div v-if="hasSourceImage" class="space-y-3 bg-slate-800/40 border border-slate-800 rounded-xl p-3">
           <div class="flex items-center justify-between text-xs">
@@ -369,12 +387,13 @@
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import {
   Upload, Camera, UploadCloud, RefreshCw, Layers, Printer, Download,
-  PlusCircle, Check, RotateCcw, RotateCw, Loader2
+  PlusCircle, Check, RotateCcw, RotateCw, Loader2, Sparkles
 } from 'lucide-vue-next';
 import { PhotoSpec, BgColorOption, TrayItem } from '../types';
 import { PRESET_PHOTO_SPECS, PRESET_BG_COLORS, createCustomSpec, mmToPx } from '../core/specs';
 import { RealtimeSegmenter } from '../core/realtimeSegmenter';
 import { hdMattingEngine } from '../core/hdMattingEngine';
+import { computeGoldenRatioAlignment } from '../core/faceAlignment';
 
 const props = defineProps<{
   trayCount: number;
@@ -498,7 +517,7 @@ function onSpecChange() {
   const spec = presetSpecs.value.find(s => s.id === selectedSpecId.value);
   if (spec) {
     currentSpec.value = spec;
-    resetTransform();
+    triggerAutoAlignment();
   }
 }
 
@@ -595,6 +614,7 @@ async function performMatting() {
     emit('show-toast', '抠图提示: 保持原图或重新调整');
   } finally {
     isMatting.value = false;
+    await triggerAutoAlignment();
     await nextTick();
     redrawEditor();
   }
@@ -607,6 +627,29 @@ async function applyBgColor(bg: BgColorOption) {
     await performMatting();
   } else {
     redrawEditor();
+  }
+}
+
+// AI 智能人像国标对齐 (依据头顶留白 8.5% 与人脸黄金比例)
+async function triggerAutoAlignment() {
+  if (!sourceImage.value) return;
+  const targetBlob = cutoutBlob.value || originalBlob.value;
+  if (!targetBlob) return;
+
+  try {
+    const result = await computeGoldenRatioAlignment(sourceImage.value, targetBlob, currentSpec.value);
+    transform.scale = result.scale;
+    transform.x = result.x;
+    transform.y = result.y;
+    transform.rotation = 0;
+    await nextTick();
+    redrawEditor();
+    if (result.success) {
+      emit('show-toast', `已按国家证件照标准自动对齐（头顶留白约8.5%，人脸垂直居中）`);
+    }
+  } catch (err) {
+    console.warn('自动对齐计算失败，恢复默认居中:', err);
+    resetTransform();
   }
 }
 
