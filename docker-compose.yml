@@ -2,19 +2,15 @@ version: '3.8'
 
 services:
   offline-idphoto:
-    build:
-      context: ./v1.0.0
-      dockerfile: docker/Dockerfile.quick
+    # 官方云端预编译镜像（由 GitHub Actions 自动编译，免除本地构建与源码依赖，开箱即用）
+    image: ghcr.io/mysecret2022/offline-idphoto:latest
     container_name: offline-idphoto
     restart: always
     ports:
-      # 宿主机端口 : 容器内部端口
-      - "8080:80"    # HTTP 访问入口，适合本地电脑浏览器使用：http://localhost:8080
-      - "8443:443"   # HTTPS 访问入口，供局域网手机/iPad拍照使用：https://<宿主机IP>:8443
+      - "8080:80"    # HTTP 访问入口，适合电脑本机使用：http://localhost:8080
+      - "8443:443"   # HTTPS 访问入口，供局域网手机/iPad拍照使用：https://<您的NAS或电脑IP>:8443
     volumes:
-      # SSL 证书持久化挂载目录
-      # 若目录为空，容器首次启动时内置脚本会自动生成 10 年有效期的自签名证书
-      # 若您有自己的域名证书，可将 cert.pem 和 key.pem 放入此目录实现无缝替换
-      - ./v1.0.0/docker/certs:/etc/nginx/certs
+      # SSL 证书持久化目录（容器启动时若为空将自动生成10年有效期自签证书）
+      - ./certs:/etc/nginx/certs
     environment:
       - TZ=Asia/Shanghai

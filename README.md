@@ -78,30 +78,40 @@
 
 ---
 
-## 🐳 Docker Compose 部署指南 (推荐)
+## 🐳 Docker Compose 极速部署指南 (NAS / 个人服务器推荐)
 
-### 1. 标准 `docker-compose.yml` 完整配置
+### 1. 标准 `docker-compose.yml` 完整配置 (零代码依赖，即拷即用)
+
+针对 **群晖 Synology、极空间、绿联 UGOS、威联通 QNAP、1Panel、Portainer** 或任何 Linux/Windows 个人服务器，您只需新建一个文件夹（例如 `docker/idphoto`），并在里面创建以下 `docker-compose.yml` 即可，**无需下载任何源码**：
 
 ```yaml
 version: '3.8'
 
 services:
   offline-idphoto:
-    build:
-      context: ./v1.0.0
-      dockerfile: docker/Dockerfile.quick
+    # 官方云端预编译镜像（GitHub Actions 全自动构建，开箱即用）
+    image: ghcr.io/mysecret2022/offline-idphoto:latest
     container_name: offline-idphoto
     restart: always
     ports:
-      # 宿主机端口 : 容器端口
-      - "8080:80"    # HTTP 访问入口：电脑本机浏览器使用 (http://localhost:8080)
-      - "8443:443"   # HTTPS 访问入口：局域网手机/iPad使用 (https://<宿主机IP>:8443)
+      # 宿主机端口 : 容器内部端口
+      - "8080:80"    # HTTP 电脑本机访问：http://localhost:8080
+      - "8443:443"   # HTTPS 手机拍照访问：https://<NAS或服务器IP>:8443
     volumes:
-      # SSL 证书挂载目录 (初次启动若为空，容器将自动为您生成10年有效期的自签证书)
-      - ./v1.0.0/docker/certs:/etc/nginx/certs
+      # 证书持久化（首次运行自动生成10年有效自签证书，也可放入您自己的域名证书）
+      - ./certs:/etc/nginx/certs
     environment:
       - TZ=Asia/Shanghai
 ```
+
+---
+
+### 2. 命令行一键拉取运行
+
+```bash
+docker compose up -d
+```
+> 系统将直接从 GitHub 容器镜像库拉取已打包好的高精发丝级镜像（无需在您的 NAS 或本地电脑上进行漫长的编译），几秒钟内即可启动！
 
 ---
 
