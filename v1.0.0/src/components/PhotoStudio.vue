@@ -925,11 +925,18 @@ async function applyCustomColor(hex: string) {
 // AI 智能人像国标对齐 (依据头顶留白 8.5% 与人脸黄金比例)
 async function triggerAutoAlignment() {
   if (!sourceImage.value) return;
-  const targetBlob = cutoutBlob.value || originalBlob.value;
-  if (!targetBlob) return;
+
+  // 如果尚未进行抠图，提示并先行快速智能抠图获取透明人像蒙版
+  if (!cutoutBlob.value) {
+    emit('show-toast', '正在自动提取人物轮廓以进行精准国标对齐...');
+    await performMatting(false, false);
+  }
+
+  const targetSource = currentCutoutImg || cutoutBlob.value || originalBlob.value;
+  if (!targetSource) return;
 
   try {
-    const result = await computeGoldenRatioAlignment(sourceImage.value, targetBlob, currentSpec.value);
+    const result = await computeGoldenRatioAlignment(sourceImage.value, targetSource, currentSpec.value);
     transform.scale = result.scale;
     transform.x = result.x;
     transform.y = result.y;
@@ -1355,6 +1362,13 @@ async function addToTray() {
       memberName: `成员 ${props.trayCount + 1}`,
       originalBlob: originalBlob.value,
       cutoutBlob: cutoutBlob.value || originalBlob.value,
+      composedBlob,
+      transform: {
+        scale: transform.scale,
+        x: transform.x,
+        y: transform.y,
+        rotation: transform.rotation
+      },
       previewUrl,
       spec: { ...currentSpec.value },
       printCount: 4, // 默认 4 张
@@ -1379,6 +1393,13 @@ async function openSingleExport() {
       memberName: '证件照',
       originalBlob: originalBlob.value,
       cutoutBlob: cutoutBlob.value || originalBlob.value,
+      composedBlob,
+      transform: {
+        scale: transform.scale,
+        x: transform.x,
+        y: transform.y,
+        rotation: transform.rotation
+      },
       previewUrl,
       spec: { ...currentSpec.value },
       printCount: 1,

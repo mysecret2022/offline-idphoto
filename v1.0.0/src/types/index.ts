@@ -37,6 +37,13 @@ export interface TrayItem {
   memberName: string;
   originalBlob: Blob;
   cutoutBlob: Blob; // 纯透明人物 PNG Blob
+  composedBlob?: Blob; // 包含用户手动位移、缩放与选定底色的完整合成图
+  transform?: {
+    scale: number;
+    x: number;
+    y: number;
+    rotation: number;
+  };
   previewUrl: string; // 带有当前底色的合成预览图
   spec: PhotoSpec;
   printCount: number;

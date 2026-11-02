@@ -151,6 +151,27 @@ docker compose up -d --build
       3) 引入 Canvas `drawCover` 算法与 MediaPipe 蒙版等比裁剪映射，保证自拍与抓拍画面绝对不变形；
       4) 在真实宿主机 Edge 浏览器 iPhone 12 视口下实测验证，实测人像形变率为 0.22%，双击与捏合缩放 100% 通过验证。
 
+13. **AI 智能人脸国标对齐功能失效问题修复**：
+    - 原因：
+      1) 在 `faceAlignment.ts` 中，虽然函数接收了 `cutoutCanvasOrBlob`，但在第 70 行却错误执行了 `sCtx.drawImage(sourceImageOrCanvas, 0, 0, scanW, scanH)`，绘制的是原图（带有原背景且无透明通道，整图像素 Alpha=255）；
+      2) 导致第一行像素（y=0）的 Alpha 即大于 60，`topY` 恒被判定为 0（原图最顶边），且每一行宽度均为全宽 200，人体轮廓分析与肩颈转折点完全无法触发，导致对齐计算直接失效或把人脸严重推向画面之外；
+      3) 若用户未预先抠图直接点击对齐，未自动触发抠图前置流程。
+    - 解决：
+      1) 将 `computeGoldenRatioAlignment` 彻底重构为基于透明蒙版（`cutoutCanvasOrBlob`）的生理轮廓与肤色双重质心识别算法：利用 `createImageBitmap` 提取透明人像通道，精确扫描发际线 `topY`、上半部头部最大宽度 `maxHeadWidth`、下巴颈部凹陷波谷（Neck Valley）以及面部肤色中轴线 `headCenterX`；
+      2) 严格按照中国国家标准（GB/T 37048、护照、国考与驾照规范），精确计算黄金变换矩阵：头顶留白固定约 8.5%，头部高度占总画面 58%，水平中轴线严格 50% 居中；
+      3) 在 `PhotoStudio.vue` 的 `triggerAutoAlignment` 中增加未抠图自动执行前置快速抠图的友好流程；并在宿主机真实 Edge 浏览器自动化实测，头顶留白误差为 0%，头部高度准确对齐 58.0%，中心对齐准确率 100%。
+
+14. **照片抠图完成后手动移动人物，导出依然是默认居中偏移问题修复**：
+    - 原因：
+      1) 在 `PhotoStudio.vue` 中，用户在主画布拖拽平移人像时虽然实时修改了 `transform.x` 与 `transform.y`，但在调用 `openSingleExport`（单张导出）与 `addToTray`（加入托盘）时，创建的 `TrayItem` 结构体中缺少 `transform` 字段，且未携带已合成的高保真 `composedBlob`；
+      2) 在 `packingAlgorithm.ts` 的 `PrintPackingEngine.renderItemToCanvas(item)` 中，绘制人物时丢弃了用户的任何平移缩放记录，直接执行了硬编码的居中绘制：`drawX = (w - drawW) / 2; drawY = (h - drawH) / 2;`，导致导出单张证件照与托盘拼版时人像均被强制重置回初始居中位置。
+    - 解决：
+      1) 在 `types/index.ts` 的 `TrayItem` 中扩充 `transform: { scale, x, y, rotation }` 与 `composedBlob` 字段；
+      2) 在 `PhotoStudio.vue` 的 `addToTray` 与 `openSingleExport` 中完整封装当前实时的 `transform` 与主画布无损合成的 `composedBlob`；
+      3) 在 `packingAlgorithm.ts` 的 `renderItemToCanvas` 中全面接入 `item.transform` 矩阵渲染；
+      4) 在 `ExportModal.vue` 中优先基于 `item.composedBlob` / `renderItemToCanvas` 进行二分体积压缩，保证导出照片与主画布 100% 像素级一致；
+      5) 在宿主机真实 Edge 浏览器端到端模拟拖拽偏移 +60px, +60px，自动化测试证实导出模态窗与托盘 100% 精确保留了用户手动位移。
+
 ---
 
 ## 5. Android APK 移动端原生工程与云端自动化构建

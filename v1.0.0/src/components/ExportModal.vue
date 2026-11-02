@@ -150,8 +150,26 @@ function setTargetKb(kb: number) {
 async function recompress() {
   isCompressing.value = true;
   try {
-    // 1. 生成带有底色的基准 Canvas
-    const baseCanvas = await PrintPackingEngine.renderItemToCanvas(props.item);
+    // 1. 生成带有底色的基准 Canvas (优先直接提取主画布无损合成帧，保证 100% 像素级一致)
+    let baseCanvas: HTMLCanvasElement;
+    if (props.item.composedBlob && brightness.value === 100) {
+      baseCanvas = document.createElement('canvas');
+      baseCanvas.width = props.item.spec.widthPx;
+      baseCanvas.height = props.item.spec.heightPx;
+      const ctx = baseCanvas.getContext('2d');
+      if (ctx) {
+        try {
+          const bmp = await createImageBitmap(props.item.composedBlob);
+          ctx.drawImage(bmp, 0, 0, baseCanvas.width, baseCanvas.height);
+        } catch {
+          baseCanvas = await PrintPackingEngine.renderItemToCanvas(props.item);
+        }
+      } else {
+        baseCanvas = await PrintPackingEngine.renderItemToCanvas(props.item);
+      }
+    } else {
+      baseCanvas = await PrintPackingEngine.renderItemToCanvas(props.item);
+    }
 
     // 2. 若有亮度微调，应用滤镜
     let canvasToCompress = baseCanvas;

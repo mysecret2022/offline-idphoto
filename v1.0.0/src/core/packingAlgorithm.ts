@@ -132,6 +132,7 @@ export class PrintPackingEngine {
 
   /**
    * 将托盘照片扣像与选定底色合成到单张指定尺寸规格的 Canvas
+   * 严格继承用户在画布上的手动缩放、旋转与平移 (transform)
    */
   public static async renderItemToCanvas(item: TrayItem): Promise<HTMLCanvasElement> {
     const canvas = document.createElement('canvas');
@@ -146,6 +147,25 @@ export class PrintPackingEngine {
     // 1. 绘制底色或原图
     if (item.selectedBg.value === 'original') {
       const origImg = await this.blobToImage(item.originalBlob);
+      if (item.transform) {
+        ctx.save();
+        const imgW = (origImg as any).naturalWidth || origImg.width;
+        const imgH = (origImg as any).naturalHeight || origImg.height;
+        const centerX = item.transform.x + (imgW * item.transform.scale) / 2;
+        const centerY = item.transform.y + (imgH * item.transform.scale) / 2;
+        ctx.translate(centerX, centerY);
+        ctx.rotate(((item.transform.rotation || 0) * Math.PI) / 180);
+        ctx.drawImage(
+          origImg,
+          -(imgW * item.transform.scale) / 2,
+          -(imgH * item.transform.scale) / 2,
+          imgW * item.transform.scale,
+          imgH * item.transform.scale
+        );
+        ctx.restore();
+        return canvas;
+      }
+
       const imgRatio = origImg.width / origImg.height;
       const targetRatio = w / h;
       let drawW = w;
@@ -182,7 +202,27 @@ export class PrintPackingEngine {
     // 2. 绘制纯透明人物
     const cutoutImg = await this.blobToImage(item.cutoutBlob);
     
-    // 计算适应与证件照黄金比例居中裁剪缩放
+    // 若有用户手动调整或自动对齐的变换矩阵，按完全一致的矩阵高保真绘制
+    if (item.transform) {
+      ctx.save();
+      const imgW = (cutoutImg as any).naturalWidth || cutoutImg.width;
+      const imgH = (cutoutImg as any).naturalHeight || cutoutImg.height;
+      const centerX = item.transform.x + (imgW * item.transform.scale) / 2;
+      const centerY = item.transform.y + (imgH * item.transform.scale) / 2;
+      ctx.translate(centerX, centerY);
+      ctx.rotate(((item.transform.rotation || 0) * Math.PI) / 180);
+      ctx.drawImage(
+        cutoutImg,
+        -(imgW * item.transform.scale) / 2,
+        -(imgH * item.transform.scale) / 2,
+        imgW * item.transform.scale,
+        imgH * item.transform.scale
+      );
+      ctx.restore();
+      return canvas;
+    }
+
+    // 兜底居中裁剪缩放
     const imgRatio = cutoutImg.width / cutoutImg.height;
     const targetRatio = w / h;
 
