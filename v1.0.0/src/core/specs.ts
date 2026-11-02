@@ -23,6 +23,15 @@ export const PRESET_PHOTO_SPECS: PhotoSpec[] = [
     description: '适用于驾照、体检表、普通证件、求职简历'
   },
   {
+    id: 'spec_id_card',
+    name: '二代居民身份证 (GA461)',
+    widthMm: 26,
+    heightMm: 32,
+    widthPx: 358,
+    heightPx: 441,
+    description: '公安部 GA461—2004 标准：26×32mm (358×441px)，纯白底，头部占相片尺寸2/3，脸宽15±1mm'
+  },
+  {
     id: 'spec_large_1_inch',
     name: '大 1 寸',
     widthMm: 33,

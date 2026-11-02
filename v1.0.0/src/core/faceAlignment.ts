@@ -210,12 +210,13 @@ export async function computeGoldenRatioAlignment(
     // 生理兜底：证件照头部高度在原图应至少占 25%
     const origHeadHeight = Math.max(origChinY - origTopY, imgH * 0.25);
 
-    // 10. 根据国家证件照黄金比例标准计算对齐变换参数：
-    // - 头顶留白：目标占总高度约 8.5%
-    // - 头部大小（头顶至下巴）：目标占总高度约 58%
+    // 10. 根据国家证件照与居民身份证 GA461—2004 黄金比例标准计算对齐变换参数：
+    // - 居民身份证 (GA461—2004)：依据公安部标准，头部占照片高度严格为 2/3 (约 66.7%)，头顶留白约 7.5%
+    // - 普通证件照/护照/其他考试：头顶留白约 8.5%，头部大小（头顶至下巴）约占 58%
     // - 水平中心：严格 50% 居中
-    const targetTopMarginPx = spec.heightPx * 0.085;
-    const targetHeadHeightPx = spec.heightPx * 0.58;
+    const isIdCard = spec.id === 'spec_id_card' || spec.name.includes('身份证');
+    const targetTopMarginPx = spec.heightPx * (isIdCard ? 0.075 : 0.085);
+    const targetHeadHeightPx = spec.heightPx * (isIdCard ? (2 / 3) : 0.58);
     const targetCenterX = spec.widthPx * 0.5;
 
     const optimalScale = targetHeadHeightPx / origHeadHeight;

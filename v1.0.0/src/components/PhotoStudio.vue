@@ -143,12 +143,26 @@
               viewBox="0 0 100 140"
               preserveAspectRatio="none"
             >
-              <line x1="15" y1="12" x2="85" y2="12" stroke="#60a5fa" stroke-width="0.8" stroke-dasharray="3,3" opacity="0.8" />
-              <text x="50" y="9" font-size="3.5" fill="#93c5fd" text-anchor="middle">头顶留白区</text>
-              <ellipse cx="50" cy="46" rx="24" ry="30" fill="none" stroke="#38bdf8" stroke-width="1.2" stroke-dasharray="4,3" opacity="0.85" />
-              <line x1="30" y1="44" x2="70" y2="44" stroke="#38bdf8" stroke-width="0.6" stroke-dasharray="2,2" opacity="0.6" />
-              <path d="M 12 128 Q 30 92, 50 94 Q 70 92, 88 128" fill="none" stroke="#60a5fa" stroke-width="1.2" stroke-dasharray="4,3" opacity="0.8" />
-              <text x="50" y="100" font-size="3.5" fill="#93c5fd" text-anchor="middle">双肩对齐基准</text>
+              <template v-if="currentSpec.id === 'spec_id_card'">
+                <!-- 公安部 GA461—2004 居民身份证标准专用参考线 (头部占2/3、脸宽15±1mm、纯白底) -->
+                <line x1="10" y1="10.5" x2="90" y2="10.5" stroke="#f59e0b" stroke-width="0.9" stroke-dasharray="3,3" opacity="0.9" />
+                <text x="50" y="8" font-size="3.5" fill="#fde68a" text-anchor="middle">GA461 顶端留白区</text>
+                <ellipse cx="50" cy="57" rx="29" ry="46.5" fill="none" stroke="#fbbf24" stroke-width="1.3" stroke-dasharray="4,3" opacity="0.9" />
+                <line x1="21" y1="57" x2="79" y2="57" stroke="#fbbf24" stroke-width="0.6" stroke-dasharray="2,2" opacity="0.7" />
+                <text x="50" y="54" font-size="3.2" fill="#fde68a" text-anchor="middle">脸部宽度 15±1mm</text>
+                <line x1="15" y1="103.5" x2="85" y2="103.5" stroke="#f59e0b" stroke-width="0.8" stroke-dasharray="3,3" opacity="0.8" />
+                <text x="50" y="108" font-size="3.3" fill="#fde68a" text-anchor="middle">下巴基准线 (头部占尺寸 2/3)</text>
+                <line x1="50" y1="5" x2="50" y2="135" stroke="#fbbf24" stroke-width="0.5" stroke-dasharray="2,4" opacity="0.4" />
+              </template>
+              <template v-else>
+                <line x1="15" y1="12" x2="85" y2="12" stroke="#60a5fa" stroke-width="0.8" stroke-dasharray="3,3" opacity="0.8" />
+                <text x="50" y="9" font-size="3.5" fill="#93c5fd" text-anchor="middle">头顶留白区</text>
+                <ellipse cx="50" cy="46" rx="24" ry="30" fill="none" stroke="#38bdf8" stroke-width="1.2" stroke-dasharray="4,3" opacity="0.85" />
+                <line x1="30" y1="44" x2="70" y2="44" stroke="#38bdf8" stroke-width="0.6" stroke-dasharray="2,2" opacity="0.6" />
+                <path d="M 12 128 Q 30 92, 50 94 Q 70 92, 88 128" fill="none" stroke="#60a5fa" stroke-width="1.2" stroke-dasharray="4,3" opacity="0.8" />
+                <text x="50" y="100" font-size="3.5" fill="#93c5fd" text-anchor="middle">双肩对齐基准</text>
+                <line x1="50" y1="5" x2="50" y2="135" stroke="#94a3b8" stroke-width="0.5" stroke-dasharray="2,4" opacity="0.4" />
+              </template>
             </svg>
           </div>
 
@@ -203,13 +217,26 @@
               viewBox="0 0 100 140"
               preserveAspectRatio="none"
             >
-              <line x1="15" y1="12" x2="85" y2="12" stroke="#60a5fa" stroke-width="0.8" stroke-dasharray="3,3" opacity="0.8" />
-              <text x="50" y="9" font-size="3.5" fill="#93c5fd" text-anchor="middle">头顶留白线</text>
-              <ellipse cx="50" cy="46" rx="24" ry="30" fill="none" stroke="#38bdf8" stroke-width="1.2" stroke-dasharray="4,3" opacity="0.85" />
-              <line x1="30" y1="44" x2="70" y2="44" stroke="#38bdf8" stroke-width="0.6" stroke-dasharray="2,2" opacity="0.6" />
-              <path d="M 12 128 Q 30 92, 50 94 Q 70 92, 88 128" fill="none" stroke="#60a5fa" stroke-width="1.2" stroke-dasharray="4,3" opacity="0.8" />
-              <text x="50" y="100" font-size="3.5" fill="#93c5fd" text-anchor="middle">双肩对准线</text>
-              <line x1="50" y1="5" x2="50" y2="135" stroke="#94a3b8" stroke-width="0.5" stroke-dasharray="2,4" opacity="0.4" />
+              <template v-if="currentSpec.id === 'spec_id_card'">
+                <!-- 公安部 GA461—2004 居民身份证标准专用参考线 (头部占2/3、脸宽15±1mm、纯白底) -->
+                <line x1="10" y1="10.5" x2="90" y2="10.5" stroke="#f59e0b" stroke-width="0.9" stroke-dasharray="3,3" opacity="0.9" />
+                <text x="50" y="8" font-size="3.5" fill="#fde68a" text-anchor="middle">GA461 顶端留白区</text>
+                <ellipse cx="50" cy="57" rx="29" ry="46.5" fill="none" stroke="#fbbf24" stroke-width="1.3" stroke-dasharray="4,3" opacity="0.9" />
+                <line x1="21" y1="57" x2="79" y2="57" stroke="#fbbf24" stroke-width="0.6" stroke-dasharray="2,2" opacity="0.7" />
+                <text x="50" y="54" font-size="3.2" fill="#fde68a" text-anchor="middle">脸部宽度 15±1mm</text>
+                <line x1="15" y1="103.5" x2="85" y2="103.5" stroke="#f59e0b" stroke-width="0.8" stroke-dasharray="3,3" opacity="0.8" />
+                <text x="50" y="108" font-size="3.3" fill="#fde68a" text-anchor="middle">下巴基准线 (头部占尺寸 2/3)</text>
+                <line x1="50" y1="5" x2="50" y2="135" stroke="#fbbf24" stroke-width="0.5" stroke-dasharray="2,4" opacity="0.4" />
+              </template>
+              <template v-else>
+                <line x1="15" y1="12" x2="85" y2="12" stroke="#60a5fa" stroke-width="0.8" stroke-dasharray="3,3" opacity="0.8" />
+                <text x="50" y="9" font-size="3.5" fill="#93c5fd" text-anchor="middle">头顶留白线</text>
+                <ellipse cx="50" cy="46" rx="24" ry="30" fill="none" stroke="#38bdf8" stroke-width="1.2" stroke-dasharray="4,3" opacity="0.85" />
+                <line x1="30" y1="44" x2="70" y2="44" stroke="#38bdf8" stroke-width="0.6" stroke-dasharray="2,2" opacity="0.6" />
+                <path d="M 12 128 Q 30 92, 50 94 Q 70 92, 88 128" fill="none" stroke="#60a5fa" stroke-width="1.2" stroke-dasharray="4,3" opacity="0.8" />
+                <text x="50" y="100" font-size="3.5" fill="#93c5fd" text-anchor="middle">双肩对准线</text>
+                <line x1="50" y1="5" x2="50" y2="135" stroke="#94a3b8" stroke-width="0.5" stroke-dasharray="2,4" opacity="0.4" />
+              </template>
             </svg>
           </div>
 
@@ -387,7 +414,9 @@
               <div class="text-xs font-bold leading-tight flex items-center space-x-1">
                 <span>AI 智能人脸国标对齐</span>
               </div>
-              <div class="text-[10px] text-blue-100 opacity-90">头顶留白约8.5%，居中黄金比例</div>
+              <div class="text-[10px] text-blue-100 opacity-90">
+                {{ (currentSpec.id === 'spec_id_card' || currentSpec.name.includes('身份证')) ? 'GA461标准：头部占2/3·脸宽15±1mm' : '头顶留白约8.5%，居中黄金比例' }}
+              </div>
             </div>
           </div>
           <span class="text-[11px] bg-white/20 group-hover:bg-white/30 px-2 py-0.5 rounded-full font-medium transition">一键对齐</span>
@@ -736,6 +765,12 @@ function onSpecChange() {
   const spec = presetSpecs.value.find(s => s.id === selectedSpecId.value);
   if (spec) {
     currentSpec.value = spec;
+    // 如果选择二代身份证，公安部 GA461-2004 规定必须为纯白背景，若当前不是原图底色，自动匹配纯白底色
+    if ((spec.id === 'spec_id_card' || spec.name.includes('身份证')) && selectedBg.value.value !== 'original') {
+      const whiteBg = bgColors.value.find(b => b.id === 'bg_white');
+      if (whiteBg) selectedBg.value = whiteBg;
+      emit('show-toast', '已切换至《居民身份证制证标准 GA461—2004》，并自动匹配官方纯白底色');
+    }
     triggerAutoAlignment();
   }
 }
@@ -947,7 +982,11 @@ async function triggerAutoAlignment() {
     await nextTick();
     redrawEditor();
     if (result.success) {
-      emit('show-toast', `已按国家证件照标准自动对齐（头顶留白约8.5%，人脸垂直居中）`);
+      const isIdCard = currentSpec.value.id === 'spec_id_card' || currentSpec.value.name.includes('身份证');
+      const toastText = isIdCard
+        ? `已按二代居民身份证(GA461-2004)标准自动对齐（头部占2/3、脸宽15±1mm、白底无边框）`
+        : `已按国家证件照标准自动对齐（头顶留白约8.5%，人脸垂直居中）`;
+      emit('show-toast', toastText);
     }
   } catch (err) {
     console.warn('自动对齐计算失败，恢复默认居中:', err);

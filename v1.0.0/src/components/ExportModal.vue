@@ -49,7 +49,7 @@
           <!-- 预设常用报名考试限制 -->
           <div class="flex items-center space-x-2">
             <button
-              v-for="preset in [20, 30, 50, 100, 200]"
+              v-for="preset in [20, 30, 40, 50, 100, 200]"
               :key="preset"
               @click="setTargetKb(preset)"
               class="px-2.5 py-1 rounded-lg text-xs font-medium transition"
@@ -57,6 +57,12 @@
             >
               {{ preset }}K
             </button>
+          </div>
+
+          <!-- 针对身份证标准的智能提示 -->
+          <div v-if="isIdCard" class="text-[11px] text-amber-300 bg-amber-950/40 border border-amber-800/60 px-2.5 py-1.5 rounded-lg flex items-center space-x-1.5">
+            <span>📋</span>
+            <span>GA461—2004 标准：制证文件容量需在 14KB ~ 40KB 之间，白色背景无边框</span>
           </div>
 
           <!-- 滑块精确调节 -->
@@ -130,7 +136,8 @@ const emit = defineEmits<{
   (e: 'close'): void;
 }>();
 
-const targetKb = ref<number>(50); // 默认 50KB (国考、各类报名最常用)
+const isIdCard = props.item.spec.id === 'spec_id_card' || props.item.spec.name.includes('身份证');
+const targetKb = ref<number>(isIdCard ? 30 : 50); // 居民身份证 GA461-2004 规定在 14KB~40KB 之间，默认 30KB
 const brightness = ref<number>(100);
 const isCompressing = ref(false);
 const compressedSizeKb = ref<number>(0);
