@@ -82,11 +82,14 @@
       </div>
     </header>
 
-    <!-- 主操作区 -->
-    <main class="flex-1 w-full flex flex-col md:flex-row items-center justify-between overflow-hidden p-2 sm:p-4 gap-4">
+    <!-- 主操作区 (移动端竖向自适应滑动，电脑端全屏布局) -->
+    <main class="flex-1 w-full flex flex-col md:flex-row items-center justify-between overflow-y-auto md:overflow-hidden p-2 sm:p-4 gap-3">
       
-      <!-- 左侧/中央：画布交互视口 -->
-      <section class="relative flex-1 w-full h-full min-h-[360px] flex items-center justify-center bg-slate-900/60 rounded-2xl border border-slate-800/80 overflow-hidden shadow-inner">
+      <!-- 左侧/中央：画布交互视口 (防挤压防变形容器) -->
+      <section
+        ref="editorSectionRef"
+        class="relative flex-1 w-full min-h-[340px] md:min-h-[380px] flex items-center justify-center bg-slate-900/60 rounded-2xl border border-slate-800/80 overflow-hidden shadow-inner p-2 sm:p-3"
+      >
         
         <!-- A. 处于“上传模式”且尚未选择图片时：大号拖拽上传卡片 -->
         <div
@@ -120,17 +123,18 @@
           <!-- 隐藏原生视频 -->
           <video ref="cameraVideoRef" playsinline autoplay muted class="hidden"></video>
 
-          <!-- 严格比例取景容器 -->
+          <!-- 严格比例取景容器 (等比防变形) -->
           <div
-            class="relative rounded-2xl overflow-hidden shadow-2xl border-2 border-blue-500/80 transition-all duration-300"
+            class="relative rounded-2xl overflow-hidden shadow-2xl border-2 border-blue-500/80 transition-all duration-300 flex-shrink-0 flex items-center justify-center"
+            style="touch-action: none;"
             :style="{
               width: viewfinderStyle.width,
               height: viewfinderStyle.height,
-              aspectRatio: `${currentSpec.widthPx} / ${currentSpec.heightPx}`
+              aspectRatio: viewfinderStyle.aspectRatio
             }"
           >
             <!-- 实时背景复合 Canvas -->
-            <canvas ref="cameraCanvasRef" class="w-full h-full object-cover"></canvas>
+            <canvas ref="cameraCanvasRef" class="w-full h-full block object-cover" style="aspect-ratio: inherit;"></canvas>
 
             <!-- 证件照引导辅助线 -->
             <svg
@@ -175,20 +179,22 @@
           class="relative flex flex-col items-center justify-center w-full h-full p-2"
           @wheel.prevent="handleWheelZoom"
         >
-          <!-- 规格容器窗口 -->
+          <!-- 规格容器窗口 (等比防拉伸 · 支持单指拖拽/双击缩放/双指捏合) -->
           <div
             ref="viewportContainerRef"
-            class="relative rounded-2xl overflow-hidden shadow-2xl border-2 border-blue-500/80 cursor-grab active:cursor-grabbing transition-all duration-200 canvas-checkerboard"
+            class="relative rounded-2xl overflow-hidden shadow-2xl border-2 border-blue-500/80 cursor-grab active:cursor-grabbing transition-all duration-200 canvas-checkerboard select-none flex-shrink-0 flex items-center justify-center"
+            style="touch-action: none;"
             :style="{
               width: viewfinderStyle.width,
               height: viewfinderStyle.height,
-              aspectRatio: `${currentSpec.widthPx} / ${currentSpec.heightPx}`
+              aspectRatio: viewfinderStyle.aspectRatio
             }"
             @mousedown="startPan"
             @touchstart="startTouchPan"
+            @dblclick="handleDoubleClick"
           >
             <!-- 渲染主画布 -->
-            <canvas ref="editorCanvasRef" class="w-full h-full block"></canvas>
+            <canvas ref="editorCanvasRef" class="w-full h-full block pointer-events-none" style="object-fit: contain; aspect-ratio: inherit;"></canvas>
 
             <!-- 证件照规范辅助定位虚线 -->
             <svg
@@ -207,12 +213,10 @@
             </svg>
           </div>
 
-          <!-- 画布浮动状态指示 -->
-          <div class="flex items-center space-x-3 mt-3 text-xs text-slate-400">
-            <span>🖱️ 拖拽平移画面</span>
-            <span>·</span>
-            <span>🔍 缩放大小: {{ zoomPercent }}%</span>
-            <button @click="resetTransform" class="text-blue-400 hover:text-blue-300 underline text-[11px] ml-1">
+          <!-- 画布浮动状态指示与手势提示 -->
+          <div class="flex items-center space-x-2 mt-2.5 text-xs text-slate-400 flex-wrap justify-center text-center">
+            <span>🖱️ 拖拽平移 · 双指捏合/双击缩放 ({{ zoomPercent }}%)</span>
+            <button @click="resetTransform" class="text-blue-400 hover:text-blue-300 underline text-xs ml-1 font-medium">
               居中复位
             </button>
           </div>
@@ -516,7 +520,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, reactive, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import {
   Upload, Camera, UploadCloud, RefreshCw, Layers, Printer, Download,
   PlusCircle, Check, RotateCcw, RotateCw, Loader2, Sparkles, ZoomIn, ZoomOut, Scissors, Palette,
@@ -589,10 +593,16 @@ const transform = reactive({
 });
 
 let isPanning = false;
+let isPinching = false;
 let startPanX = 0;
 let startPanY = 0;
 let initialTransformX = 0;
 let initialTransformY = 0;
+let initialPinchDistance = 0;
+let initialPinchZoom = 100;
+let lastTapTime = 0;
+let lastTapX = 0;
+let lastTapY = 0;
 
 // 自定义规格表单
 const showCustomModal = ref(false);
@@ -607,22 +617,81 @@ const calculatedCustomPx = computed(() => {
   return `${w} × ${h} px`;
 });
 
-// 计算自适应取景框大小
-const viewfinderStyle = computed(() => {
+const editorSectionRef = ref<HTMLElement | null>(null);
+const containerSize = reactive({
+  width: 295,
+  height: 413,
+});
+
+// 计算自适应取景框大小（根据父容器实际宽高双重边界约束，严格保持规格真实宽高比，彻底杜绝手机端横纵拉伸与人像变形）
+function updateViewfinderDimensions() {
   const spec = currentSpec.value;
   const ratio = spec.widthPx / spec.heightPx;
+
+  const parent = editorSectionRef.value;
+  let maxW = 460;
+  let maxH = 500;
+  if (parent && parent.clientWidth > 0 && parent.clientHeight > 0) {
+    maxW = Math.max(160, parent.clientWidth - 32);
+    maxH = Math.max(180, parent.clientHeight - 70);
+  } else if (typeof window !== 'undefined') {
+    maxW = Math.min(window.innerWidth - 32, 460);
+    maxH = Math.min(window.innerHeight * 0.46, 500);
+  }
+
+  // 严格等比计算尺寸 (Fit Aspect Ratio)
+  let w = maxW;
+  let h = w / ratio;
+  if (h > maxH) {
+    h = maxH;
+    w = h * ratio;
+  }
+
+  containerSize.width = Math.round(w);
+  containerSize.height = Math.round(h);
+}
+
+const viewfinderStyle = computed(() => {
   return {
-    width: ratio < 1 ? `calc(58vh * ${ratio})` : '78vw',
-    height: ratio < 1 ? '58vh' : `calc(78vw / ${ratio})`,
+    width: `${containerSize.width}px`,
+    height: `${containerSize.height}px`,
+    aspectRatio: `${currentSpec.value.widthPx} / ${currentSpec.value.heightPx}`,
   };
 });
 
+watch(currentSpec, () => {
+  updateViewfinderDimensions();
+});
+
+let resizeObs: ResizeObserver | null = null;
 onMounted(() => {
   window.addEventListener('paste', handleWindowPaste);
   window.addEventListener('mousemove', onPanMove);
   window.addEventListener('mouseup', endPan);
-  window.addEventListener('touchmove', onTouchPanMove);
-  window.addEventListener('touchend', endPan);
+  window.addEventListener('touchmove', onTouchPanMove, { passive: false });
+  window.addEventListener('touchend', endTouchPan);
+  window.addEventListener('touchcancel', endTouchPan);
+
+  updateViewfinderDimensions();
+  if (typeof ResizeObserver !== 'undefined' && editorSectionRef.value) {
+    resizeObs = new ResizeObserver(() => {
+      updateViewfinderDimensions();
+    });
+    resizeObs.observe(editorSectionRef.value);
+  }
+  window.addEventListener('resize', updateViewfinderDimensions);
+
+  if (typeof window !== 'undefined') {
+    (window as any).__IDPHOTO_STUDIO__ = {
+      handleDoubleTapZoom,
+      applyZoomPercent,
+      getZoomPercent: () => zoomPercent.value,
+      hasSourceImage: () => hasSourceImage.value,
+      getContainerSize: () => ({ ...containerSize }),
+      getSpec: () => ({ ...currentSpec.value }),
+      loadFile
+    };
+  }
 
   // 静默预加载离线神经网络：页面打开后在后台静默预取并初始化，用户上传照片点击抠图时 0 等待直接出图
   setTimeout(() => {
@@ -631,11 +700,14 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  if (resizeObs) resizeObs.disconnect();
+  window.removeEventListener('resize', updateViewfinderDimensions);
   window.removeEventListener('paste', handleWindowPaste);
   window.removeEventListener('mousemove', onPanMove);
   window.removeEventListener('mouseup', endPan);
   window.removeEventListener('touchmove', onTouchPanMove);
-  window.removeEventListener('touchend', endPan);
+  window.removeEventListener('touchend', endTouchPan);
+  window.removeEventListener('touchcancel', endTouchPan);
   stopCamera();
 });
 
@@ -915,6 +987,7 @@ function applyZoomPercent(percent: number) {
   transform.scale = targetScale;
   transform.x = imgCenterX - (imgW * targetScale) / 2;
   transform.y = imgCenterY - (imgH * targetScale) / 2;
+  zoomPercent.value = Math.round(percent);
 
   redrawEditor();
 }
@@ -947,7 +1020,7 @@ function rotateImage(deg: number) {
   redrawEditor();
 }
 
-// 鼠标/触控平移交互
+// 鼠标/触控平移交互与移动端手势 (单指拖拽 / 双指捏合缩放 / 双击极速放大缩小)
 function startPan(e: MouseEvent) {
   isPanning = true;
   startPanX = e.clientX;
@@ -965,27 +1038,101 @@ function onPanMove(e: MouseEvent) {
   redrawEditor();
 }
 
+function handleDoubleClick() {
+  handleDoubleTapZoom(0, 0);
+}
+
+function handleDoubleTapZoom(tapX: number, tapY: number) {
+  if (!sourceImage.value) return;
+  // 若当前已放大（>120%），双击恢复 100% 原始贴合；若为正常大小（<=120%），双击快速放大至 180% 细节特写
+  if (zoomPercent.value > 120) {
+    applyZoomPercent(100);
+    emit('show-toast', '已恢复 100% 贴合尺寸');
+  } else {
+    applyZoomPercent(180);
+    emit('show-toast', '已双击放大至 180% 细节特写');
+  }
+}
+
 function startTouchPan(e: TouchEvent) {
   if (e.touches.length === 1) {
+    const touch = e.touches[0];
+    const now = Date.now();
+    const timeDiff = now - lastTapTime;
+    const dist = Math.hypot(touch.clientX - lastTapX, touch.clientY - lastTapY);
+
+    // 检测移动端双击 (320ms 内两次触碰，位移小于 35px)
+    if (timeDiff < 320 && dist < 35) {
+      if (e.cancelable) e.preventDefault();
+      handleDoubleTapZoom(touch.clientX, touch.clientY);
+      lastTapTime = 0;
+      isPanning = false;
+      isPinching = false;
+      return;
+    }
+
+    lastTapTime = now;
+    lastTapX = touch.clientX;
+    lastTapY = touch.clientY;
+
     isPanning = true;
-    startPanX = e.touches[0].clientX;
-    startPanY = e.touches[0].clientY;
+    isPinching = false;
+    startPanX = touch.clientX;
+    startPanY = touch.clientY;
     initialTransformX = transform.x;
     initialTransformY = transform.y;
+  } else if (e.touches.length === 2) {
+    // 启动双指捏合缩放
+    isPinching = true;
+    isPanning = false;
+    initialPinchDistance = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY
+    );
+    initialPinchZoom = zoomPercent.value;
   }
 }
 
 function onTouchPanMove(e: TouchEvent) {
-  if (!isPanning || e.touches.length !== 1) return;
-  const dx = e.touches[0].clientX - startPanX;
-  const dy = e.touches[0].clientY - startPanY;
-  transform.x = initialTransformX + dx;
-  transform.y = initialTransformY + dy;
-  redrawEditor();
+  if (e.touches.length === 1 && isPanning) {
+    const dx = e.touches[0].clientX - startPanX;
+    const dy = e.touches[0].clientY - startPanY;
+    transform.x = initialTransformX + dx;
+    transform.y = initialTransformY + dy;
+    redrawEditor();
+  } else if (e.touches.length === 2 && isPinching) {
+    if (e.cancelable) e.preventDefault();
+    const currentDist = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY
+    );
+    if (initialPinchDistance > 10) {
+      const factor = currentDist / initialPinchDistance;
+      const targetZoom = Math.min(300, Math.max(15, Math.round(initialPinchZoom * factor)));
+      applyZoomPercent(targetZoom);
+    }
+  }
+}
+
+function endTouchPan(e?: TouchEvent) {
+  if (e && e.touches && e.touches.length > 0) {
+    if (e.touches.length === 1) {
+      isPinching = false;
+      isPanning = true;
+      startPanX = e.touches[0].clientX;
+      startPanY = e.touches[0].clientY;
+      initialTransformX = transform.x;
+      initialTransformY = transform.y;
+    }
+  } else {
+    isPanning = false;
+    isPinching = false;
+  }
 }
 
 function endPan() {
   isPanning = false;
+  isPinching = false;
 }
 
 // 核心重绘函数
@@ -1101,6 +1248,24 @@ async function toggleCameraFacing() {
   await startCamera();
 }
 
+// 保持纵横比等比居中裁剪绘制 (Cover)，防止摄像头与图片非等比拉伸
+function drawCover(
+  ctx: CanvasRenderingContext2D,
+  source: CanvasImageSource,
+  sourceW: number,
+  sourceH: number,
+  targetW: number,
+  targetH: number
+) {
+  if (!sourceW || !sourceH || !targetW || !targetH) return;
+  const scale = Math.max(targetW / sourceW, targetH / sourceH);
+  const sw = targetW / scale;
+  const sh = targetH / scale;
+  const sx = (sourceW - sw) / 2;
+  const sy = (sourceH - sh) / 2;
+  ctx.drawImage(source, sx, sy, sw, sh, 0, 0, targetW, targetH);
+}
+
 function runCameraLoop() {
   const loop = () => {
     if (cameraVideoRef.value && cameraCanvasRef.value && cameraVideoRef.value.readyState >= 2) {
@@ -1127,7 +1292,7 @@ function runCameraLoop() {
             ctx.translate(canvas.width, 0);
             ctx.scale(-1, 1);
           }
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          drawCover(ctx, video, video.videoWidth, video.videoHeight, canvas.width, canvas.height);
           ctx.restore();
         }
       }
@@ -1137,13 +1302,16 @@ function runCameraLoop() {
   cameraAnimFrame = requestAnimationFrame(loop);
 }
 
-// 相机抓拍快门
+// 相机抓拍快门 (高保真等比居中抓拍，绝对不变形)
 async function takeSnapshot() {
   if (!cameraVideoRef.value || isMatting.value) return;
   const video = cameraVideoRef.value;
+  const spec = currentSpec.value;
+  const snapW = spec.widthPx * 2;
+  const snapH = spec.heightPx * 2;
   const snapCanvas = document.createElement('canvas');
-  snapCanvas.width = video.videoWidth || currentSpec.value.widthPx;
-  snapCanvas.height = video.videoHeight || currentSpec.value.heightPx;
+  snapCanvas.width = snapW;
+  snapCanvas.height = snapH;
   const ctx = snapCanvas.getContext('2d');
   if (!ctx) return;
 
@@ -1151,7 +1319,7 @@ async function takeSnapshot() {
     ctx.translate(snapCanvas.width, 0);
     ctx.scale(-1, 1);
   }
-  ctx.drawImage(video, 0, 0, snapCanvas.width, snapCanvas.height);
+  drawCover(ctx, video, video.videoWidth, video.videoHeight, snapW, snapH);
 
   snapCanvas.toBlob(async (blob) => {
     if (!blob) return;

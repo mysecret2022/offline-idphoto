@@ -137,8 +137,17 @@ export class RealtimeSegmenter {
     tempCanvas.height = h;
     const tCtx = tempCanvas.getContext('2d');
     if (tCtx) {
-      // 绘制原始蒙版
-      tCtx.drawImage(mask, 0, 0, w, h);
+      // 严格等比居中裁剪 (Cover) 填充，防止手机摄像头 16:9 视频在证件照比例画布中变形拉伸
+      const sW = (rawSource as any).videoWidth || (rawSource as any).naturalWidth || (rawSource as any).width || w;
+      const sH = (rawSource as any).videoHeight || (rawSource as any).naturalHeight || (rawSource as any).height || h;
+      const scale = Math.max(w / sW, h / sH);
+      const sw = w / scale;
+      const sh = h / scale;
+      const sx = (sW - sw) / 2;
+      const sy = (sH - sh) / 2;
+
+      // 绘制原始蒙版 (保持与画面像素 1:1 对齐)
+      tCtx.drawImage(mask, sx, sy, sw, sh, 0, 0, w, h);
       const mData = tCtx.getImageData(0, 0, w, h);
       const d = mData.data;
       for (let i = 0; i < d.length; i += 4) {
@@ -147,9 +156,9 @@ export class RealtimeSegmenter {
       }
       tCtx.putImageData(mData, 0, 0);
 
-      // 使用 source-in 保留人形内部的人物画面
+      // 使用 source-in 保留人形内部的人物画面 (严格等比裁剪)
       tCtx.globalCompositeOperation = 'source-in';
-      tCtx.drawImage(rawSource, 0, 0, w, h);
+      tCtx.drawImage(rawSource, sx, sy, sw, sh, 0, 0, w, h);
       
       // 贴回目标背景之上
       ctx.drawImage(tempCanvas, 0, 0, w, h);
